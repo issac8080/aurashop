@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ShoppingBag, Home, Store, Check, ArrowLeft } from "lucide-react";
+import { ShoppingBag, Home, Store, Check, ArrowLeft, Sparkles, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -104,6 +104,16 @@ export default function CheckoutPage() {
         }),
       });
       const order = await res.json();
+      
+      // Clear cart after successful order
+      try {
+        await fetch(`${API}/session/${sessionId}/cart/clear`, {
+          method: "POST",
+        });
+      } catch (e) {
+        console.error("Failed to clear cart:", e);
+      }
+      
       router.push(`/orders/${order.id}`);
     } catch (err) {
       alert("Failed to place order. Please try again.");
@@ -262,7 +272,7 @@ export default function CheckoutPage() {
                 ))}
               </div>
               <div className="border-t pt-4">
-                <div className="flex justify-between font-bold text-lg">
+                <div className="flex justify-between font-bold text-fluid-lg">
                   <span>Total</span>
                   <span className="text-primary">{formatPrice(total)}</span>
                 </div>

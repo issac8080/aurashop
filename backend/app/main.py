@@ -23,6 +23,7 @@ from app.data_store import (
     get_cart,
     add_to_cart,
     remove_from_cart,
+    clear_cart,
     get_session_context,
 )
 from app.ai_service import get_recommendations, chat as ai_chat
@@ -36,6 +37,19 @@ from app.order_service import (
     get_user_profile,
     create_or_update_profile,
     get_available_stores,
+)
+from app.wallet_service import (
+    get_wallet,
+    add_cashback,
+    add_pending_points,
+    activate_pending_points,
+    deduct_from_wallet,
+    add_refund,
+    add_money_to_wallet,
+    get_wallet_summary,
+    get_recent_transactions,
+    calculate_cashback,
+    get_cashback_rate,
 )
 
 
@@ -164,6 +178,13 @@ def get_session_cart(session_id: str):
         if p:
             products.append(p.model_dump())
     return {"cart": products}
+
+
+@app.post("/session/{session_id}/cart/clear")
+def clear_cart_endpoint(session_id: str):
+    """Clear all items from cart."""
+    clear_cart(session_id)
+    return {"message": "Cart cleared", "success": True}
 
 
 # Orders and Store Pickup
@@ -332,4 +353,22 @@ def preview_cashback(order_total: float):
         "points_amount": points,
         "points_rate": f"{rate:.0f}%",
         "validity_days": 30,
+    }
+
+
+@app.post("/wallet/add-money")
+def add_money_endpoint(user_id: str = Query(...), amount: float = Query(...), payment_method: str = Query("razorpay")):
+    """Add money to wallet (top-up). Payment gateway integration placeholder."""
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    if amount > 100000:
+        raise HTTPException(status_code=400, detail="Maximum top-up amount is ₹100,000")
+    
+    # In production, integrate with Razorpay here
+    # For now, simulate successful payment
+    transaction = add_money_to_wallet(user_id, amount, payment_method)
+    return {
+        "success": True,
+        "transaction": transaction.model_dump(),
+        "message": f"Successfully added {amount} to wallet",
     }
