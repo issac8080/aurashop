@@ -9,3 +9,9 @@ python-multipart==0.0.6
 kagglehub
 chromadb>=0.4.22
 numpy>=1.24.0
+sqlalchemy==2.0.36
+sentence-transformers==3.2.1
+langgraph==0.4.5
+langgraph-checkpoint==2.0.26
+langchain-core==0.3.59
+typing-extensions==4.12.2
