@@ -38,7 +38,7 @@ export function ProductCard({
 
   return (
     <div className="h-full">
-      <Card className="overflow-hidden group h-full flex flex-col rounded-2xl sm:rounded-3xl border border-border/80 bg-card shadow-card hover:shadow-card-hover hover:border-primary/25 hover:-translate-y-1 transition-all duration-200">
+      <Card className="overflow-hidden group h-full flex flex-col rounded-2xl sm:rounded-3xl border border-white/60 dark:border-white/10 bg-white/70 dark:bg-gray-900/60 backdrop-blur-md shadow-sm hover:shadow-xl hover:border-primary/30 hover:-translate-y-1 transition-all duration-300">
         <Link href={`/products/${product.id}`} onClick={handleClick} className="block">
           <div className="aspect-square bg-muted/50 relative overflow-hidden">
             <img
@@ -81,7 +81,7 @@ export function ProductCard({
         <CardFooter className="p-3.5 sm:p-4 pt-0">
           <Button
             size="sm"
-            className="w-full rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 shadow-lg shadow-primary/25"
+            className="w-full rounded-xl font-semibold bg-gradient-to-r from-teal-500 to-emerald-600 hover:opacity-90 shadow-lg shadow-primary/25"
             onClick={(e) => {
               e.preventDefault();
               onAddToCart?.(product.id);

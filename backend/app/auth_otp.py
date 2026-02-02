@@ -31,12 +31,19 @@ def send_otp(email: str) -> bool:
     return True
 
 
+# Local demo: OTP 123456 works for any email (no need to check terminal)
+DEMO_OTP = "123456"
+
+
 def verify_otp(email: str, otp: str) -> bool:
-    """Verify OTP for email. Clear on success. Returns True if valid."""
+    """Verify OTP for email. Clear on success. Returns True if valid. Local demo: 123456 works for any email."""
     email = (email or "").strip().lower()
     otp = (otp or "").strip()
     if not email or not otp:
         return False
+    if otp == DEMO_OTP:
+        _otp_store.pop(email, None)
+        return True
     entry = _otp_store.get(email)
     if not entry:
         return False

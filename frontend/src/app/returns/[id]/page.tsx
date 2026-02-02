@@ -29,7 +29,7 @@ const statusConfig: Record<string, { label: string; icon: any; color: string }> 
   AI_REJECTED: { label: "Rejected", icon: XCircle, color: "bg-red-500/15 text-red-700" },
   ADMIN_APPROVED: { label: "Approved", icon: CheckCircle, color: "bg-emerald-500/15 text-emerald-700" },
   ADMIN_REJECTED: { label: "Rejected", icon: XCircle, color: "bg-red-500/15 text-red-700" },
-  PROCESSING: { label: "Processing", icon: Clock, color: "bg-purple-500/15 text-purple-700" },
+  PROCESSING: { label: "Processing", icon: Clock, color: "bg-teal-500/15 text-teal-700" },
   COMPLETED: { label: "Completed", icon: CheckCircle, color: "bg-emerald-500/15 text-emerald-700" },
   CANCELLED: { label: "Cancelled", icon: XCircle, color: "bg-gray-500/15 text-gray-700" },
 };
@@ -47,10 +47,11 @@ export default function ReturnDetailsPage() {
       try {
         const res = await fetch(`${API}/returns/${returnId}`);
         if (!res.ok) throw new Error("Return request not found");
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
+        if (!data) throw new Error("Invalid response");
         setReturnData(data);
-      } catch (err: any) {
-        setError(err.message || "Failed to load return details");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load return details");
       } finally {
         setLoading(false);
       }

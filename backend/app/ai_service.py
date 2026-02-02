@@ -30,12 +30,22 @@ _openai_invalid_logged = False
 
 def _classify_intent(message: str) -> str:
     """
-    Classify user message into: order | recommend | faq | general.
-    Used to route to agentic order flow, RAG recommend, RAG FAQ, or general chat.
+    Classify user message into: quick_order | order | recommend | faq | general.
+    quick_order = conversational "order any X for me" (product by description). order = cart/checkout.
     """
     msg_lower = (message or "").strip().lower()
     if not msg_lower:
         return "general"
+    # Quick order: "order any black shoe mens for me", "order me a shirt", "get me shoes", "buy me ..."
+    quick_order_triggers = [
+        "order any ", "order me ", "get me ", "buy me ",
+        "order any ", "order a ", "order some ", "order black ", "order white ",
+    ]
+    product_words = ["shoe", "shoes", "footwear", "shirt", "dress", "watch", "bag", "laptop", "phone", "jeans", "sneaker", "formal", "casual"]
+    if any(t in msg_lower for t in quick_order_triggers) and any(w in msg_lower for w in product_words):
+        return "quick_order"
+    if msg_lower.startswith(("order ", "buy ", "get me ")) and any(w in msg_lower for w in product_words):
+        return "quick_order"
     # Order: buy, purchase, order, checkout, pay (and not asking "what is order")
     order_words = ["buy", "purchase", "order for me", "checkout", "pay for", "complete my order", "place order"]
     if any(w in msg_lower for w in order_words):
@@ -51,10 +61,109 @@ def _classify_intent(message: str) -> str:
     if any(t in msg_lower for t in faq_triggers) and not any(w in msg_lower for w in ["recommend", "suggest", "find", "show me", "best ", "good "]):
         return "faq"
     # Recommend: recommend, suggest, find, show, best, good products, etc.
-    rec_words = ["recommend", "suggest", "find me", "show me", "best ", "good ", "top ", "trending", "popular", "look for", "get me"]
-    if any(w in msg_lower for w in rec_words):
+    rec_words = ["recommend", "suggest", "find me", "show me", "best ", "good ", "top ", "trending", "popular", "look for"]
+    if any(w in msg_lower for w in rec_words) and "order" not in msg_lower:
         return "recommend"
     return "general"
+
+
+# Quick order via chat: session_id -> draft { step, attributes, product_id, product }
+_quick_order_drafts: Dict[str, dict] = {}
+
+
+def _parse_quick_order_attributes(message: str) -> Dict[str, Any]:
+    """Extract category, gender, color, size, budget_max, product_type from message."""
+    import re
+    msg = (message or "").strip().lower()
+    out = {"category": None, "gender": None, "color": None, "size": None, "budget_max": None, "product_type": None}
+    # Category: shoe/shoes/footwear -> Footwear; shirt -> Clothing; etc.
+    if any(w in msg for w in ["shoe", "shoes", "footwear", "sneaker", "sneakers"]):
+        out["category"] = "Footwear"
+    elif any(w in msg for w in ["shirt", "shirts", "tshirt", "top", "dress", "jeans", "pant"]):
+        out["category"] = "Clothing"
+    elif any(w in msg for w in ["watch", "watches"]):
+        out["category"] = "Accessories"
+    elif any(w in msg for w in ["laptop", "phone", "electronics"]):
+        out["category"] = "Electronics"
+    elif any(w in msg for w in ["bag", "bags"]):
+        out["category"] = "Accessories"
+    # Gender
+    if any(w in msg for w in ["men", "mens", "male", "man"]):
+        out["gender"] = "men"
+    elif any(w in msg for w in ["women", "womens", "female", "woman"]):
+        out["gender"] = "women"
+    # Color
+    colors = ["black", "white", "blue", "red", "green", "grey", "gray", "brown", "navy", "beige"]
+    for c in colors:
+        if c in msg:
+            out["color"] = c if c != "grey" else "gray"
+            break
+    # Size: 8, 9, 10, 11 from "size 10" or "10"
+    size_match = re.search(r"\b(size\s*)?(8|9|10|11)\b", msg)
+    if size_match:
+        out["size"] = int(size_match.group(2))
+    # Budget
+    if "no limit" in msg or "any" in msg and "budget" not in msg:
+        out["budget_max"] = None
+    else:
+        budget_match = re.search(r"(?:under|below|₹?)\s*(\d{1,6})", msg)
+        if budget_match:
+            out["budget_max"] = int(budget_match.group(1))
+        if "1000" in msg and "2000" in msg:
+            out["budget_max"] = 2000
+    # Type: casual, formal, sports
+    if "casual" in msg:
+        out["product_type"] = "casual"
+    elif "formal" in msg:
+        out["product_type"] = "formal"
+    elif "sport" in msg:
+        out["product_type"] = "sports"
+    return out
+
+
+def _merge_quick_order_from_message(message: str, attrs: Dict[str, Any]) -> Dict[str, Any]:
+    """Parse button-style response (e.g. 'Size 10', 'Under ₹1000') into attributes."""
+    msg = (message or "").strip().lower()
+    out = dict(attrs)
+    if "size" in msg or msg.strip() in ("8", "9", "10", "11"):
+        for n in (8, 9, 10, 11):
+            if str(n) in msg or f"size {n}" in msg:
+                out["size"] = n
+                break
+    if "under ₹1000" in msg or "under 1000" in msg or "₹1000" in msg and "2000" not in msg:
+        out["budget_max"] = 1000
+    elif "1000" in msg and "2000" in msg or "₹1000–₹2000" in msg:
+        out["budget_max"] = 2000
+    elif "no limit" in msg:
+        out["budget_max"] = 999999
+    if "casual" in msg:
+        out["product_type"] = "casual"
+    elif "formal" in msg:
+        out["product_type"] = "formal"
+    elif "sport" in msg:
+        out["product_type"] = "sports"
+    return out
+
+
+def _select_product_for_quick_order(attrs: Dict[str, Any], products: List[Product]) -> Optional[Product]:
+    """Select best product: category/color/budget match, in-stock, highest rating."""
+    category = attrs.get("category")
+    color = attrs.get("color")
+    budget_max = attrs.get("budget_max")
+    product_type = attrs.get("product_type")
+    candidates = list(products)
+    if category:
+        candidates = [p for p in candidates if category.lower() in (p.category or "").lower() or (p.name and category.lower() in p.name.lower())]
+    if color:
+        candidates = [p for p in candidates if (p.colors and any(color in c.lower() for c in p.colors)) or (p.name and color in p.name.lower())]
+    if budget_max is not None:
+        candidates = [p for p in candidates if p.price <= budget_max]
+    candidates = [p for p in candidates if getattr(p, "in_stock", True)]
+    if product_type:
+        candidates = [p for p in candidates if product_type in (p.name or "").lower() or product_type in (p.category or "").lower() or (p.tags and product_type in " ".join(p.tags).lower())]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: (p.rating, -p.price))
 
 
 def _parse_agent_intent(message: str, orders_info: List[dict], cart_count: int) -> Dict[str, Any]:
@@ -331,13 +440,19 @@ def _product_summary(p: Product) -> dict:
 
 
 def _build_user_summary(context: dict) -> str:
-    profile = context.get("profile", {})
+    profile = context.get("profile", {}) or {}
     budget = profile.get("max_budget") or (context.get("budget_signals") or [None])[-1]
     categories = profile.get("preferred_categories") or context.get("categories_viewed", [])
     queries = context.get("search_queries", [])
     viewed = context.get("viewed_product_ids", [])
     cart = context.get("cart_ids", [])
     parts = []
+    if context.get("user_name"):
+        parts.append(f"Logged-in user: {context['user_name']}")
+    if context.get("order_categories"):
+        parts.append(f"Past order categories: {', '.join(context['order_categories'][:5])}")
+    if context.get("preferred_stores"):
+        parts.append(f"Preferred stores: {', '.join(context['preferred_stores'][:3])}")
     if budget:
         parts.append(f"Budget signal: under ₹{budget}")
     if categories:
@@ -357,14 +472,37 @@ def get_recommendations(
     max_price: Optional[float] = None,
     category: Optional[str] = None,
     exclude_product_ids: Optional[List[str]] = None,
+    user_id: Optional[str] = None,
 ) -> List[dict]:
     """
     Hybrid recommendation: rule-based + AI ranking.
+    When user_id (email) is provided, enriches context with profile and order history for personalization.
     Returns list of { product_id, reason, confidence }.
     """
     context = get_session_context(session_id)
+    if user_id:
+        try:
+            from app.order_service import get_user_profile, get_user_orders
+            profile = get_user_profile(user_id)
+            orders = get_user_orders(user_id)
+            if profile:
+                context["user_name"] = profile.name or user_id
+                context["preferred_stores"] = profile.preferred_stores or []
+            if orders:
+                order_cats = []
+                for o in orders[:20]:
+                    for item in getattr(o, "items", []) or []:
+                        pid = getattr(item, "product_id", None)
+                        if pid:
+                            from app.data_store import get_product
+                            p = get_product(pid)
+                            if p and p.category and p.category not in order_cats:
+                                order_cats.append(p.category)
+                context["order_categories"] = order_cats[:10]
+        except Exception:
+            pass
     context_key = hashlib.md5(
-        f"{limit}_{max_price}_{category}_{exclude_product_ids}".encode()
+        f"{limit}_{max_price}_{category}_{exclude_product_ids}_{user_id or ''}".encode()
     ).hexdigest()
     cached = get_cached_recommendations(session_id, context_key)
     if cached is not None:
@@ -664,15 +802,54 @@ Remember: You have REAL user data. Use it for accurate, personalized help!"""
     return {"content": content, "product_ids": product_ids[:6]}
 
 
-def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = None):
+def _build_chat_actions(
+    intent: str,
+    has_cart: bool,
+    cart_total: float,
+    wallet_balance: float,
+    current_page: Optional[str] = None,
+    message_lower: str = "",
+) -> List[dict]:
+    """
+    Build action buttons for Aura AI responses. Actions are shown in chat for quick actions.
+    Returns list of {"type": "navigate"|"spin_wheel", "label": str, "payload": str}.
+    """
+    actions: List[dict] = []
+    # Cart / checkout
+    if has_cart:
+        if intent in ("order", "general", ""):
+            actions.append({"type": "navigate", "label": "Apply coupon", "payload": "/cart"})
+            actions.append({"type": "navigate", "label": "Proceed to checkout", "payload": "/checkout"})
+    # Wallet
+    if "wallet" in message_lower or "aurapoint" in message_lower or "balance" in message_lower or intent == "faq":
+        if "wallet" in message_lower or "aurapoint" in message_lower or "balance" in message_lower:
+            actions.append({"type": "navigate", "label": "View Aura Wallet", "payload": "/wallet"})
+    # Gamification
+    if "spin" in message_lower or "wheel" in message_lower or "game" in message_lower or "scratch" in message_lower or "coupon" in message_lower:
+        actions.append({"type": "navigate", "label": "Spin to Win", "payload": "/discounts"})
+        actions.append({"type": "navigate", "label": "Explore Discounts", "payload": "/discounts"})
+    # Orders
+    if "order" in message_lower and ("track" in message_lower or "status" in message_lower or "where" in message_lower):
+        actions.append({"type": "navigate", "label": "My Orders", "payload": "/profile"})
+    # Profile
+    if "profile" in message_lower or "preference" in message_lower or "account" in message_lower:
+        actions.append({"type": "navigate", "label": "My Profile", "payload": "/profile"})
+    return actions[:5]  # Max 5 actions
+
+
+def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = None, context: Optional[dict] = None):
     """
     Generator that yields SSE-style dicts: {"content": "..."} for each chunk,
-    then {"done": True, "product_ids": [...]}. Makes the assistant feel like generative AI.
+    then {"done": True, "product_ids": [...], "actions": [...]}. Context-aware Aura AI copilot.
     """
     import re
     from app.order_service import get_user_orders, get_user_profile
     from app.wallet_service import get_wallet_summary
     from app.data_store import get_categories
+
+    request_context = context or {}
+    current_page = request_context.get("current_page") or ""
+    user_id_for_data = request_context.get("user_id") or session_id  # Use email when logged in for orders/wallet
 
     context = get_session_context(session_id)
     products = load_products()
@@ -686,7 +863,7 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
 
     orders_info = []
     try:
-        orders = get_user_orders(session_id)
+        orders = get_user_orders(user_id_for_data)
         for order in orders[:3]:
             orders_info.append({
                 "id": order.id, "total": order.total, "status": order.status.value,
@@ -697,14 +874,14 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
 
     wallet_info = {"balance": 0, "pending_points": 0, "total_earned": 0}
     try:
-        ws = get_wallet_summary(session_id)
+        ws = get_wallet_summary(user_id_for_data)
         wallet_info = {**wallet_info, **{k: ws.get(k, 0) for k in ["balance", "pending_points", "total_earned", "expiring_soon"]}}
     except Exception:
         pass
 
     profile_name = "there"
     try:
-        profile = get_user_profile(session_id)
+        profile = get_user_profile(user_id_for_data)
         if profile and profile.name:
             profile_name = profile.name
     except Exception:
@@ -748,41 +925,151 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
             profile_address,
         )
         if action_result:
+            actions = _build_chat_actions("order", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, message.lower())
             yield {"content": action_result[0]}
-            yield {"done": True, "product_ids": action_result[1][:6]}
+            yield {"done": True, "product_ids": action_result[1][:6], "actions": actions}
             return
 
     intent = _classify_intent(message)
+    msg_lower = (message or "").lower()
+
+    # ----- Quick Order via Chat -----
+    draft = _quick_order_drafts.get(session_id)
+    confirm_msg = msg_lower in ("confirm", "confirm and place order", "confirm & place order", "place order", "yes", "confirm order")
+    change_msg = msg_lower in ("change details", "change", "change details please", "no")
+
+    if draft and draft.get("step") == "confirm" and confirm_msg:
+        from app.order_service import create_order, get_user_profile
+        from app.models import OrderItem, DeliveryMethod
+        from app.wallet_service import calculate_cashback
+        user_id = request_context.get("user_id") or session_id
+        product = draft.get("product")
+        if product and user_id:
+            profile = get_user_profile(user_id)
+            address = "Default address (update in Profile)"
+            if profile and getattr(profile, "addresses", None):
+                addrs = profile.addresses if isinstance(profile.addresses, list) else []
+                if addrs:
+                    address = addrs[0]
+            items = [OrderItem(product_id=product.id, quantity=1, price=product.price)]
+            order = create_order(user_id=user_id, items=items, delivery_method=DeliveryMethod.HOME_DELIVERY, delivery_address=address)
+            points = calculate_cashback(order.total)
+            from datetime import datetime, timedelta
+            delivery_date = (datetime.utcnow() + timedelta(days=5)).strftime("%b %d, %Y")
+            content = f"Done! **Order placed.**\n\n**Order ID:** {order.id}\n**Delivery by:** {delivery_date}\n**Earned AuraPoints:** ₹{points:.0f} (credited after delivery)\n\nView order: [Order {order.id}](/orders/{order.id})"
+            del _quick_order_drafts[session_id]
+            yield {"content": content}
+            yield {"done": True, "product_ids": [], "actions": [{"type": "navigate", "label": "View Order", "payload": f"/orders/{order.id}"}]}
+            return
+        else:
+            content = "Something went wrong. Please try again or add the item to cart and checkout."
+            yield {"content": content}
+            yield {"done": True, "product_ids": [], "actions": []}
+            return
+
+    if draft and change_msg:
+        del _quick_order_drafts[session_id]
+        content = "No problem! Tell me again what you'd like—e.g. \"order any black shoe mens for me\"—and we can pick size, budget & type."
+        yield {"content": content}
+        yield {"done": True, "product_ids": [], "actions": []}
+        return
+
+    if draft or intent == "quick_order":
+        products_list = load_products()
+        if not draft:
+            attrs = _parse_quick_order_attributes(message)
+            draft = {"step": "collect", "attributes": attrs, "product_id": None, "product": None}
+            _quick_order_drafts[session_id] = draft
+        else:
+            draft["attributes"] = _merge_quick_order_from_message(message, draft.get("attributes") or {})
+
+        attrs = draft["attributes"]
+        need_size = (attrs.get("category") == "Footwear") and attrs.get("size") is None
+        need_budget = attrs.get("budget_max") is None
+        need_type = attrs.get("product_type") is None
+
+        if need_size:
+            content = f"Got it—looking for **{attrs.get('color') or 'your'} {attrs.get('category') or 'item'}** for **{attrs.get('gender') or 'you'}**. What size?"
+            actions = [{"type": "quick_order_option", "label": "Size 8", "payload": "size=8"}, {"type": "quick_order_option", "label": "Size 9", "payload": "size=9"}, {"type": "quick_order_option", "label": "Size 10", "payload": "size=10"}, {"type": "quick_order_option", "label": "Size 11", "payload": "size=11"}]
+            yield {"content": content}
+            yield {"done": True, "product_ids": [], "actions": actions}
+            return
+
+        if need_budget:
+            content = "What's your budget?"
+            actions = [{"type": "quick_order_option", "label": "Under ₹1000", "payload": "budget=1000"}, {"type": "quick_order_option", "label": "₹1000–₹2000", "payload": "budget=2000"}, {"type": "quick_order_option", "label": "No limit", "payload": "budget=none"}]
+            yield {"content": content}
+            yield {"done": True, "product_ids": [], "actions": actions}
+            return
+
+        if need_type:
+            content = "Casual, formal, or sports?"
+            actions = [{"type": "quick_order_option", "label": "Casual", "payload": "type=casual"}, {"type": "quick_order_option", "label": "Formal", "payload": "type=formal"}, {"type": "quick_order_option", "label": "Sports", "payload": "type=sports"}]
+            yield {"content": content}
+            yield {"done": True, "product_ids": [], "actions": actions}
+            return
+
+        product = _select_product_for_quick_order(attrs, products_list)
+        if not product:
+            content = "I couldn't find a match with those filters. Try \"Under ₹2000\" or \"No limit\" for budget, or say \"Change details\" to start over."
+            yield {"content": content}
+            yield {"done": True, "product_ids": [], "actions": [{"type": "quick_order_change", "label": "Change Details", "payload": "change"}]}
+            return
+
+        draft["step"] = "confirm"
+        draft["product_id"] = product.id
+        draft["product"] = product
+        _quick_order_drafts[session_id] = draft
+
+        profile = None
+        try:
+            profile = get_user_profile(request_context.get("user_id") or session_id)
+        except Exception:
+            pass
+        address = "Default address (update in Profile)"
+        if profile and getattr(profile, "addresses", None):
+            addrs = profile.addresses if isinstance(profile.addresses, list) else []
+            if addrs:
+                address = addrs[0]
+        wallet_bal = wallet_info.get("balance", 0)
+
+        content = f"Here’s the best match for you:\n\n**{product.name}** — **₹{product.price}** ({product.rating}⭐)\n\n**Order summary:**\n• Product: {product.name}\n• Price: ₹{product.price}\n• Delivery: {address[:50]}{'...' if len(address) > 50 else ''}\n• Payment: Card / UPI at checkout\n• Wallet: ₹{wallet_bal:.0f} available\n\nConfirm to place order?"
+        actions = [{"type": "quick_order_confirm", "label": "Confirm & Place Order", "payload": "confirm"}, {"type": "quick_order_change", "label": "Change Details", "payload": "change"}]
+        yield {"content": content}
+        yield {"done": True, "product_ids": [product.id], "actions": actions}
+        return
+
+    actions = _build_chat_actions(intent, bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
 
     if intent == "order":
         if cart_items:
             content = f"Hi {profile_name}! I can help you complete your purchase.\n\n"
             content += f"Items in your cart: {len(cart_items)}\nTotal: **₹{cart_total}**\n"
             content += f"Estimated AuraPoints: ₹{(cart_total * (0.07 if cart_total >= 1000 else 0.05)):.0f}\n\n"
-            content += "Go to [Checkout](/checkout) to finalize your order."
+            content += "Go to Checkout to finalize, or apply a coupon first!"
             yield {"content": content}
-            yield {"done": True, "product_ids": [p.id for p in cart_items[:6]]}
+            yield {"done": True, "product_ids": [p.id for p in cart_items[:6]], "actions": actions}
         else:
             content = f"Hi {profile_name}! Your cart is empty. Tell me what you're looking for and I'll recommend products!"
             yield {"content": content}
-            yield {"done": True, "product_ids": []}
+            yield {"done": True, "product_ids": [], "actions": []}
         return
 
     if intent == "faq":
         faq_content = _handle_faq_rag(message)
         content = faq_content or "I don't have that specific information. You can ask about orders, wallet, or product recommendations!"
         yield {"content": content}
-        yield {"done": True, "product_ids": []}
+        yield {"done": True, "product_ids": [], "actions": actions}
         return
 
     if intent == "recommend":
         rag_result = _handle_recommend_rag(session_id, message, profile_name, context)
         if rag_result:
             yield {"content": rag_result[0]}
-            yield {"done": True, "product_ids": rag_result[1][:6]}
+            yield {"done": True, "product_ids": rag_result[1][:6], "actions": actions}
         else:
             yield {"content": f"Hi {profile_name}! What kind of products are you looking for? Try 'under ₹5000' or 'best laptops'."}
-            yield {"done": True, "product_ids": []}
+            yield {"done": True, "product_ids": [], "actions": []}
         return
 
     system = f"""You are AuraShop's friendly AI shopping assistant. Be conversational and helpful.
@@ -824,7 +1111,8 @@ Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs fo
                     yield {"content": delta}
             content_str = "".join(full_content)
             product_ids = list(dict.fromkeys(re.findall(r"P\d{3,5}", content_str)))[:6]
-            yield {"done": True, "product_ids": product_ids}
+            act = _build_chat_actions(intent, bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
+            yield {"done": True, "product_ids": product_ids, "actions": act}
         except Exception as e:
             err_str = str(e).lower()
             if ("401" in err_str or "invalid_api_key" in err_str) and not _openai_invalid_logged:
@@ -832,15 +1120,17 @@ Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs fo
             content, product_ids = _intelligent_fallback(
                 message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context
             )
+            act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
             yield {"content": content}
-            yield {"done": True, "product_ids": product_ids[:6]}
+            yield {"done": True, "product_ids": product_ids[:6], "actions": act}
             return
     else:
         content, product_ids = _intelligent_fallback(
             message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context
         )
+        act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
         yield {"content": content}
-        yield {"done": True, "product_ids": product_ids[:6]}
+        yield {"done": True, "product_ids": product_ids[:6], "actions": act}
         return
 
 

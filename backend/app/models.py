@@ -58,11 +58,21 @@ class ChatMessage(BaseModel):
     product_ids: Optional[List[str]] = None  # For inline product cards
 
 
+class ChatContext(BaseModel):
+    """Context sent from frontend for context-aware Aura AI (current page, etc.)."""
+    current_page: Optional[str] = None
+    user_id: Optional[str] = None
+    cart_count: Optional[int] = None
+    cart_total: Optional[float] = None
+    recent_product_ids: Optional[List[str]] = None
+
+
 class ChatRequest(BaseModel):
     session_id: str
     user_id: Optional[str] = None
     message: str
     history: Optional[List[dict]] = None
+    context: Optional[dict] = None  # ChatContext as dict: current_page, cart_count, cart_total, recent_product_ids
 
 
 class DeliveryMethod(str, Enum):
@@ -93,6 +103,7 @@ class CreateOrderRequest(BaseModel):
     delivery_method: DeliveryMethod
     delivery_address: Optional[str] = None
     store_location: Optional[str] = None
+    coupon_code: Optional[str] = None
 
 
 class Order(BaseModel):

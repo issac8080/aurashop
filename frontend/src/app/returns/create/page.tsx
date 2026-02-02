@@ -62,7 +62,8 @@ export default function CreateReturnPage() {
       try {
         const res = await fetch(`${API}/orders/${orderId}`);
         if (!res.ok) throw new Error("Order not found");
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
+        if (!data?.id) throw new Error("Invalid order data");
         setOrder(data);
       } catch (err) {
         setError("Failed to load order details");
@@ -73,33 +74,49 @@ export default function CreateReturnPage() {
     loadOrder();
   }, [orderId]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    const newFiles: typeof mediaFiles = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const toRead = Array.from(files).filter((file) => {
       if (file.size > 5 * 1024 * 1024) {
         alert(`File ${file.name} is too large. Maximum size is 5MB.`);
-        continue;
+        return false;
       }
+      return true;
+    });
+    if (toRead.length === 0) return;
 
+    let completed = 0;
+    const newEntries: typeof mediaFiles = [];
+
+    toRead.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        newFiles.push({
-          data: base64.split(",")[1], // Remove data:image/jpeg;base64, prefix
-          mime_type: file.type,
-          filename: file.name,
-        });
-
-        if (newFiles.length === files.length) {
-          setMediaFiles([...mediaFiles, ...newFiles]);
+        const dataUrl = event.target?.result as string;
+        const parts = dataUrl.split(",");
+        const base64Data = parts[1];
+        const mime = file.type || "image/jpeg";
+        if (base64Data) {
+          newEntries.push({
+            data: base64Data,
+            mime_type: mime,
+            filename: file.name,
+          });
+        }
+        completed += 1;
+        if (completed === toRead.length) {
+          setMediaFiles((prev) => [...prev, ...newEntries]);
+        }
+      };
+      reader.onerror = () => {
+        completed += 1;
+        if (completed === toRead.length) {
+          setMediaFiles((prev) => [...prev, ...newEntries]);
         }
       };
       reader.readAsDataURL(file);
-    }
+    });
   };
 
   const removeFile = (index: number) => {
@@ -138,18 +155,22 @@ export default function CreateReturnPage() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Failed to submit return request");
+        const errorData = await res.json().catch(() => ({}));
+        const detail = errorData?.detail;
+        const message = typeof detail === "string" ? detail : Array.isArray(detail) ? detail[0] : "Failed to submit return request";
+        throw new Error(message);
       }
 
-      const returnData = await res.json();
+      const returnData = await res.json().catch(() => ({}));
       setSuccess(true);
-      
-      setTimeout(() => {
-        router.push(`/returns/${returnData.id}`);
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || "Failed to submit return request");
+      const returnId = returnData?.id;
+      if (returnId) {
+        setTimeout(() => {
+          router.push(`/returns/${returnId}`);
+        }, 2000);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to submit return request");
     } finally {
       setSubmitting(false);
     }

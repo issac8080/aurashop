@@ -77,11 +77,14 @@ def create_order(
     delivery_method: DeliveryMethod,
     delivery_address: Optional[str] = None,
     store_location: Optional[str] = None,
+    discount: float = 0,
+    coupon_code: Optional[str] = None,
 ) -> Order:
-    """Create a new order."""
+    """Create a new order. discount is subtracted from subtotal (e.g. from coupon)."""
     _load_orders()
     order_id = f"ORD-{uuid.uuid4().hex[:8].upper()}"
-    total = sum(item.price * item.quantity for item in items)
+    subtotal = sum(item.price * item.quantity for item in items)
+    total = max(0, subtotal - discount)
     now = datetime.utcnow().isoformat()
     
     qr_code = None
@@ -244,12 +247,65 @@ def create_or_update_profile(
         return profile
 
 
-# Demo stores
+# Demo stores – one marked out of maintenance so checkout can show "book online or other store"
 AVAILABLE_STORES = [
-    {"id": "store_1", "name": "AuraShop Downtown", "address": "123 Main St, City Center"},
-    {"id": "store_2", "name": "AuraShop Mall", "address": "456 Shopping Mall, North District"},
-    {"id": "store_3", "name": "AuraShop Express", "address": "789 Quick Mart, South Area"},
+    {"id": "store_1", "name": "AuraShop Downtown", "address": "123 Main St, City Center", "out_of_maintenance": False},
+    {"id": "store_2", "name": "AuraShop Mall", "address": "456 Shopping Mall, North District", "out_of_maintenance": True},
+    {"id": "store_3", "name": "AuraShop Express", "address": "789 Quick Mart, South Area", "out_of_maintenance": False},
 ]
+
+# Mock per-store product availability (product_id -> in stock at store_ids).
+# Some products are out of stock at some stores so we can recommend another store or delivery.
+def _load_store_stock() -> Dict[str, List[str]]:
+    """product_id -> list of store_ids that have it in stock. If not listed, assume in stock everywhere."""
+    from app.data_store import load_products
+    products = load_products()
+    import random
+    random.seed(42)
+    stock: Dict[str, List[str]] = {}
+    store_ids = [s["id"] for s in AVAILABLE_STORES]
+    for p in products[:200]:  # cap for performance
+        # Simulate: ~70% chance product is in stock at all stores; else drop 1–2 stores
+        if random.random() < 0.7:
+            stock[p.id] = store_ids.copy()
+        else:
+            n = random.randint(1, 2)
+            out = set(random.sample(store_ids, n))
+            stock[p.id] = [sid for sid in store_ids if sid not in out]
+    return stock
+
+_store_stock: Optional[Dict[str, List[str]]] = None
+
+
+def get_store_stock() -> Dict[str, List[str]]:
+    global _store_stock
+    if _store_stock is None:
+        _store_stock = _load_store_stock()
+    return _store_stock
+
+
+def get_product_availability(product_id: str, store_id: Optional[str] = None) -> dict:
+    """
+    Return availability for a product: in_stock at current store, other stores with stock, deliver_online.
+    """
+    from app.data_store import get_product
+    product = get_product(product_id)
+    if not product:
+        return {"found": False, "in_stock": False, "other_stores": [], "deliver_online": True}
+    stock = get_store_stock()
+    stores_with_stock = stock.get(product_id, [s["id"] for s in AVAILABLE_STORES])
+    in_stock_here = (not store_id) or (store_id in stores_with_stock)
+    other_stores = [s for s in AVAILABLE_STORES if s["id"] in stores_with_stock and s["id"] != store_id]
+    return {
+        "found": True,
+        "product_id": product_id,
+        "product_name": product.name,
+        "in_stock": in_stock_here,
+        "current_store_id": store_id,
+        "other_stores_with_stock": other_stores,
+        "all_stores": AVAILABLE_STORES,
+        "deliver_online": True,
+    }
 
 
 def get_available_stores() -> List[dict]:

@@ -1,9 +1,20 @@
 """
 Embedding service for semantic similarity calculations.
+Model is lazy-loaded on first use to avoid slow startup and reload issues.
 """
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from typing import List
+
+# Lazy singleton: avoid loading SentenceTransformer at import time (prevents
+# slow startup and asyncio.CancelledError during uvicorn --reload).
+_embedding_service_instance = None
+
+
+def get_embedding_service() -> "EmbeddingService":
+    global _embedding_service_instance
+    if _embedding_service_instance is None:
+        _embedding_service_instance = EmbeddingService()
+    return _embedding_service_instance
 
 
 class EmbeddingService:
@@ -11,11 +22,12 @@ class EmbeddingService:
     
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         """
-        Initialize the embedding service.
+        Initialize the embedding service (called on first use).
         
         Args:
             model_name: Name of the sentence transformer model to use
         """
+        from sentence_transformers import SentenceTransformer
         self.model = SentenceTransformer(model_name)
     
     def embed_text(self, text: str) -> np.ndarray:
@@ -64,7 +76,3 @@ class EmbeddingService:
         # Calculate cosine similarity
         similarity = np.dot(embedding1, embedding2) / (norm1 * norm2)
         return float(similarity)
-
-
-# Global instance
-embedding_service = EmbeddingService()

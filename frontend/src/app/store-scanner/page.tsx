@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Scan, Package, Check, X } from "lucide-react";
+import Link from "next/link";
+import { Scan, Package, Check, X, Store, Truck, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
 
 const API = "/api";
+
+type Availability = {
+  found: boolean;
+  product_id?: string;
+  product_name?: string;
+  in_stock: boolean;
+  current_store_id?: string;
+  other_stores_with_stock: Array<{ id: string; name: string; address: string }>;
+  deliver_online: boolean;
+};
 
 type Order = {
   id: string;
@@ -19,12 +30,24 @@ type Order = {
   store_location?: string;
 };
 
+const STORES = [
+  { id: "store_1", name: "AuraShop Downtown" },
+  { id: "store_2", name: "AuraShop Mall" },
+  { id: "store_3", name: "AuraShop Express" },
+];
+
 export default function StoreScannerPage() {
   const [qrCode, setQrCode] = useState("");
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [completed, setCompleted] = useState(false);
+
+  const [productId, setProductId] = useState("");
+  const [currentStoreId, setCurrentStoreId] = useState("store_1");
+  const [availability, setAvailability] = useState<Availability | null>(null);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [availError, setAvailError] = useState("");
 
   const handleVerify = async () => {
     if (!qrCode.trim()) return;
@@ -41,18 +64,17 @@ export default function StoreScannerPage() {
       if (!res.ok && qrCode.startsWith("ORD-")) {
         res = await fetch(`${API}/orders/${qrCode}`);
         if (res.ok) {
-          const data = await res.json();
-          // Verify it's a pickup order
-          if (data.delivery_method === "store_pickup") {
+          const data = await res.json().catch(() => null);
+          if (data?.delivery_method === "store_pickup") {
             setOrder(data);
             setLoading(false);
             return;
           }
         }
       }
-      
       if (!res.ok) throw new Error("Invalid QR code");
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) throw new Error("Invalid response");
       setOrder(data);
     } catch {
       setError("Invalid QR code or order not found. Please check the code and try again.");
@@ -81,8 +103,26 @@ export default function StoreScannerPage() {
     }
   };
 
+  const checkAvailability = async () => {
+    if (!productId.trim()) return;
+    setAvailLoading(true);
+    setAvailError("");
+    setAvailability(null);
+    try {
+      const url = `${API}/products/${encodeURIComponent(productId.trim())}/availability?store=${encodeURIComponent(currentStoreId)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Product not found");
+      const data: Availability = await res.json();
+      setAvailability(data);
+    } catch {
+      setAvailError("Product not found or invalid ID.");
+    } finally {
+      setAvailLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-purple-500/5 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-emerald-500/5 py-12">
       <div className="container mx-auto px-4 max-w-2xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -199,6 +239,94 @@ export default function StoreScannerPage() {
                   <Package className="h-5 w-5 mr-2" />
                   Complete Pickup
                 </Button>
+              </motion.div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl mt-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+              Product out of stock here?
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Check other stores or recommend online delivery
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Input
+                placeholder="Product ID (e.g. P00001)"
+                value={productId}
+                onChange={(e) => setProductId(e.target.value.toUpperCase())}
+                className="font-mono max-w-[180px]"
+              />
+              <select
+                value={currentStoreId}
+                onChange={(e) => setCurrentStoreId(e.target.value)}
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                {STORES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <Button onClick={checkAvailability} disabled={availLoading || !productId.trim()}>
+                {availLoading ? "Checking..." : "Check availability"}
+              </Button>
+            </div>
+            {availError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{availError}</p>
+            )}
+            {availability && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-lg border p-4 space-y-3"
+              >
+                {!availability.found ? (
+                  <p className="text-sm text-muted-foreground">Product not found.</p>
+                ) : (
+                  <>
+                    <p className="font-medium">
+                      {availability.product_name || availability.product_id}
+                    </p>
+                    {availability.in_stock ? (
+                      <p className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                        <Check className="h-4 w-4" /> In stock at this store
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4" /> Out of stock at this store
+                        </p>
+                        {availability.other_stores_with_stock.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium mb-1">Available at:</p>
+                            <ul className="space-y-1">
+                              {availability.other_stores_with_stock.map((s) => (
+                                <li key={s.id} className="flex items-center gap-2 text-sm">
+                                  <Store className="h-4 w-4 text-primary" />
+                                  {s.name}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {availability.deliver_online && (
+                          <div className="pt-2 border-t">
+                            <p className="text-sm font-medium flex items-center gap-2">
+                              <Truck className="h-4 w-4" /> Or get it delivered
+                            </p>
+                            <Link href="/products" className="text-sm text-primary hover:underline">
+                              Order online →
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </motion.div>
             )}
           </CardContent>

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:e2e": "playwright test e2e/full-app.spec.ts",
     "clean": "node -e \"try { require('fs').rmSync('.next', { recursive: true, force: true }); console.log('Cleaned .next'); } catch (e) { console.log('Clean skipped:', e.message); }\""
   },
   "dependencies": {
@@ -28,7 +29,10 @@
     "tailwind-merge": "^2.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.1",
     "@types/node": "^20.11.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.3",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "autoprefixer": "^10.4.17",

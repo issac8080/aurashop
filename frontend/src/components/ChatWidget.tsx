@@ -1,36 +1,36 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Loader2, Sparkles, ShoppingBag, Star, ShoppingCart, ChevronDown } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Sparkles, ShoppingBag, Star, ShoppingCart, ChevronDown, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
 import { getProductImageSrc, getProductImagePlaceholder } from "@/lib/unsplash";
-import { useCart } from "@/app/providers";
-import { chatStream, fetchProduct, addToCart, type Product } from "@/lib/api";
+import { useCart, useAuth } from "@/app/providers";
+import { chatStream, fetchProduct, addToCart, type Product, type ChatAction } from "@/lib/api";
 
-const SUGGESTED = [
-  "Show trending products",
+// Context-aware suggested prompts (action-first)
+const SUGGESTED_DISCOVERY = [
+  "Black shoes under ₹1000 for office",
+  "Order any black shoe mens for me",
   "Find something under ₹5000",
   "Best casual wear",
-  "Gift ideas for tech lover",
-  "Check my wallet",
-  "What's in my cart?",
 ];
+const SUGGESTED_CART = ["Apply a coupon", "Proceed to checkout", "What's in my cart?"];
+const SUGGESTED_WALLET = ["Check my wallet", "Tell me about AuraPoints"];
+const SUGGESTED_GAMES = ["Spin the wheel", "Any discount coupons?"];
 
-// Follow-up suggestions shown after assistant messages (generative-AI style)
-const FOLLOW_UPS: Record<string, string[]> = {
-  default: [
-    "Show more like this",
-    "What's in my cart?",
-    "Best under ₹3000",
-    "Tell me about AuraPoints",
-  ],
-  cart: ["Checkout", "Show recommendations", "Clear cart"],
-  products: ["Add to cart", "Show similar", "Filter by price"],
-};
+// Follow-up suggestions after assistant messages
+const FOLLOW_UPS = [
+  "Show more like this",
+  "What's in my cart?",
+  "Best under ₹3000",
+  "Tell me about AuraPoints",
+];
 
 // Rich message content: **bold**, lists, links, code
 function MessageContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
@@ -71,14 +71,24 @@ function MessageContent({ content, isStreaming }: { content: string; isStreaming
   );
 }
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  product_ids?: string[];
+  actions?: ChatAction[];
+  isStreaming?: boolean;
+};
+
 export function ChatWidget() {
-  const { sessionId, refreshCart } = useCart();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { sessionId, refreshCart, cartCount } = useCart();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  type ChatMessage = { role: "user" | "assistant"; content: string; product_ids?: string[]; isStreaming?: boolean };
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "Hi! I'm your AuraShop assistant. I can help you search products, check your cart, track orders, and manage your wallet. Pick an option below or type your question.",
+      content: "Hi! I'm **Aura AI**, your context-aware shopping copilot. I can find products, manage your cart, apply coupons, show wallet balance, and more. Ask in plain language—e.g. \"Black shoes under ₹1000\" or \"What's in my cart?\"—or pick an option below.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -88,12 +98,44 @@ export function ChatWidget() {
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [addedToCartMessage, setAddedToCartMessage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [initialMessageToSend, setInitialMessageToSend] = useState<string | null>(null);
+
+  // Context for Aura AI (current page, cart, user)
+  const chatContext = {
+    current_page: pathname || "/",
+    user_id: user?.email ?? null,
+    cart_count: cartCount,
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, productsInChat, expandedProductId]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<{ initialMessage?: string }>;
+      const msg = customEvent.detail?.initialMessage?.trim();
+      setOpen(true);
+      if (msg) setInitialMessageToSend(msg);
+    };
+    window.addEventListener("open-aurashop-chat", handler);
+    return () => window.removeEventListener("open-aurashop-chat", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!open || !initialMessageToSend || loading) return;
+    const msg = initialMessageToSend;
+    setInitialMessageToSend(null);
+    const t = setTimeout(() => send(msg), 400);
+    return () => clearTimeout(t);
+  }, [open, initialMessageToSend]);
+
   const handleAddToCartInChat = async (product: Product) => {
+    if (!user) {
+      setOpen(false);
+      router.push("/login?from=" + encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/"));
+      return;
+    }
     if (!sessionId || addingToCartId) return;
     setAddingToCartId(product.id);
     try {
@@ -110,11 +152,35 @@ export function ChatWidget() {
     }
   };
 
+  const handleActionClick = (action: ChatAction) => {
+    if (action.type === "quick_order_option") {
+      send(action.label);
+      return;
+    }
+    if (action.type === "quick_order_confirm") {
+      send("Confirm and place order");
+      return;
+    }
+    if (action.type === "quick_order_change") {
+      send("Change details");
+      return;
+    }
+    if (action.type === "navigate" && action.payload) {
+      setOpen(false);
+      router.push(action.payload);
+      return;
+    }
+    if (action.type === "spin_wheel") {
+      setOpen(false);
+      router.push("/discounts");
+    }
+  };
+
   const send = async (text: string) => {
     const msg = text.trim();
     if (!msg || loading) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: msg }, { role: "assistant", content: "", product_ids: [], isStreaming: true }]);
+    setMessages((m) => [...m, { role: "user", content: msg }, { role: "assistant", content: "", product_ids: [], actions: [], isStreaming: true }]);
     setLoading(true);
     const history = messages.slice(-8).map((m) => ({ role: m.role, content: m.content }));
 
@@ -128,12 +194,12 @@ export function ChatWidget() {
           return next;
         });
       },
-      onDone: (productIds) => {
+      onDone: (productIds, actions) => {
         setMessages((m) => {
           const idx = m.findIndex((x) => x.role === "assistant" && x.isStreaming);
           if (idx < 0) return m;
           const next = [...m];
-          next[idx] = { role: "assistant", content: next[idx].content, product_ids: productIds, isStreaming: false };
+          next[idx] = { role: "assistant", content: next[idx].content, product_ids: productIds ?? [], actions: actions ?? [], isStreaming: false };
           return next;
         });
         setLoading(false);
@@ -154,13 +220,14 @@ export function ChatWidget() {
             role: "assistant",
             content: "Sorry, I couldn't reach the server. Make sure the backend is running (port 8000).",
             product_ids: [],
+            actions: [],
             isStreaming: false,
           };
           return next;
         });
         setLoading(false);
       },
-    });
+    }, chatContext);
   };
 
   return (
@@ -175,20 +242,20 @@ export function ChatWidget() {
             className="fixed bottom-20 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] max-w-[calc(100vw-2rem)] h-[min(85vh,620px)] sm:h-[580px] rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-xl flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-white/20 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10">
+            <div className="flex items-center justify-between p-4 border-b border-white/20 bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-cyan-500/10">
               <div className="flex items-center gap-3">
                 <motion.div
                   animate={{ rotate: [0, 5, -5, 0] }}
                   transition={{ repeat: Infinity, duration: 3 }}
-                  className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg ring-2 ring-white/30"
+                  className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center shadow-lg ring-2 ring-white/30"
                 >
                   <Sparkles className="h-5 w-5 text-white" />
                 </motion.div>
                 <div>
-                  <p className="font-bold text-sm text-foreground">AI Shopping Assistant</p>
+                  <p className="font-bold text-sm text-foreground">Aura AI</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse ring-2 ring-emerald-500/30" />
-                    Online & ready to help
+                    Context-aware shopping copilot
                   </p>
                 </div>
               </div>
@@ -215,26 +282,43 @@ export function ChatWidget() {
                       className={cn(
                         "max-w-[88%] rounded-2xl px-4 py-3 shadow-sm",
                         m.role === "user"
-                          ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-br-md"
-                          : "glass-card rounded-bl-md text-foreground border-indigo-500/20 shadow-glow"
+                          ? "bg-gradient-to-br from-teal-500 to-emerald-600 text-white rounded-br-md"
+                          : "glass-card rounded-bl-md text-foreground border-primary/20 shadow-glow"
                       )}
                     >
                       <MessageContent content={m.content} isStreaming={m.isStreaming} />
                       {m.role === "assistant" && !m.isStreaming && m.content && (
-                        <div className="flex flex-wrap gap-1.5 mt-3">
-                          {(FOLLOW_UPS.default.slice(0, 3)).map((s) => (
-                            <motion.button
-                              key={s}
-                              type="button"
-                              onClick={() => send(s)}
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              className="text-xs rounded-full border border-indigo-300/50 dark:border-indigo-600/50 bg-indigo-50/50 dark:bg-indigo-950/30 px-2.5 py-1 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-medium transition-colors"
-                            >
-                              {s}
-                            </motion.button>
-                          ))}
-                        </div>
+                        <>
+                          {m.actions && m.actions.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {m.actions.map((action, idx) => (
+                                <Button
+                                  key={idx}
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl text-xs font-semibold border-teal-300 dark:border-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/50"
+                                  onClick={() => handleActionClick(action)}
+                                >
+                                  {action.label}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {(FOLLOW_UPS.slice(0, 3)).map((s) => (
+                              <motion.button
+                                key={s}
+                                type="button"
+                                onClick={() => send(s)}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                className="text-xs rounded-full border border-primary/30 dark:border-primary/50 bg-primary/5 dark:bg-primary/20 px-2.5 py-1 hover:bg-primary/10 dark:hover:bg-primary/30 text-primary font-medium transition-colors"
+                              >
+                                {s}
+                              </motion.button>
+                            ))}
+                          </div>
+                        </>
                       )}
                       {m.role === "assistant" && m.product_ids?.length ? (
                         <div className="mt-4 flex gap-3 overflow-x-auto pb-1 -mx-1 scrollbar-thin">
@@ -257,7 +341,7 @@ export function ChatWidget() {
                                 <button
                                   type="button"
                                   onClick={() => setExpandedProductId(expandedProductId === id ? null : id)}
-                                  className="flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden w-[160px] flex-shrink-0 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-md transition-all duration-200 group text-left"
+                                  className="flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden w-[160px] flex-shrink-0 hover:border-primary dark:hover:border-primary hover:shadow-md transition-all duration-200 group text-left"
                                 >
                                   <div className="relative h-28 w-full bg-muted overflow-hidden">
                                     <img
@@ -280,9 +364,18 @@ export function ChatWidget() {
                                     {p.category && (
                                       <p className="text-[10px] text-muted-foreground truncate">{p.category}</p>
                                     )}
-                                    <p className="text-[10px] text-primary/80 mt-1 flex items-center gap-0.5">
-                                      <ChevronDown className="h-3 w-3" /> Tap for details
-                                    </p>
+                                    <div className="flex gap-1.5 mt-1.5">
+                                      <span className="text-[10px] text-primary/80 flex items-center gap-0.5">
+                                        <ChevronDown className="h-3 w-3" /> Details
+                                      </span>
+                                      <Link
+                                        href={`/products/${id}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[10px] text-teal-600 dark:text-teal-400 font-medium flex items-center gap-0.5 hover:underline"
+                                      >
+                                        <ExternalLink className="h-3 w-3" /> View
+                                      </Link>
+                                    </div>
                                   </div>
                                 </button>
                               </motion.div>
@@ -300,7 +393,7 @@ export function ChatWidget() {
                         {[0, 1, 2].map((i) => (
                           <motion.span
                             key={i}
-                            className="h-2 w-2 rounded-full bg-indigo-500"
+                            className="h-2 w-2 rounded-full bg-primary"
                             animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
                             transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.12 }}
                           />
@@ -347,7 +440,7 @@ export function ChatWidget() {
                         {productsInChat[expandedProductId].rating} · {productsInChat[expandedProductId].category}
                       </p>
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-2">{productsInChat[expandedProductId].description}</p>
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex flex-wrap gap-2 mt-3">
                         <Button
                           size="sm"
                           onClick={() => handleAddToCartInChat(productsInChat[expandedProductId])}
@@ -360,6 +453,12 @@ export function ChatWidget() {
                             <ShoppingCart className="h-3.5 w-3.5" />
                           )}
                           {addingToCartId === expandedProductId ? "Adding..." : "Add to cart"}
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-lg gap-1.5" asChild>
+                          <Link href={`/products/${expandedProductId}`} onClick={() => setExpandedProductId(null)}>
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            View product
+                          </Link>
                         </Button>
                         <Button variant="outline" size="sm" onClick={() => setExpandedProductId(null)} className="rounded-lg">
                           Close
@@ -388,19 +487,24 @@ export function ChatWidget() {
               )}
             </AnimatePresence>
 
-            {/* Suggested options (above input) + Ask box */}
+            {/* Context-aware suggested options (above input) + Ask box */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950/80">
               <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2.5">
                 Quick options
               </p>
               <div className="flex flex-wrap gap-2 mb-4">
-                {SUGGESTED.map((s) => (
+                {[
+                  ...SUGGESTED_DISCOVERY.slice(0, 2),
+                  ...(cartCount > 0 ? SUGGESTED_CART.slice(0, 2) : []),
+                  ...SUGGESTED_WALLET.slice(0, 1),
+                  ...SUGGESTED_GAMES.slice(0, 1),
+                ].map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => send(s)}
                     disabled={loading}
-                    className="text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/80 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-300 font-medium transition-colors disabled:opacity-50"
+                    className="text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/80 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-primary/50 dark:hover:border-primary text-gray-700 dark:text-gray-300 font-medium transition-colors disabled:opacity-50"
                   >
                     {s}
                   </button>
@@ -408,17 +512,17 @@ export function ChatWidget() {
               </div>
               <div className="flex gap-2">
                 <Input
-                  placeholder="Type your question..."
+                  placeholder="e.g. Black shoes under ₹1000, What's in my cart?"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send(input)}
-                  className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 text-sm"
+                  className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:border-primary focus:ring-1 focus:ring-primary/20 text-sm"
                 />
                 <Button
                   size="icon"
                   onClick={() => send(input)}
                   disabled={loading}
-                  className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+                  className="rounded-xl bg-primary hover:opacity-90 text-white shrink-0"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -433,7 +537,7 @@ export function ChatWidget() {
         whileHover={{ scale: 1.08, boxShadow: "0 0 32px -4px rgba(99, 102, 241, 0.5), 0 0 48px -8px rgba(34, 211, 238, 0.3)" }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-4 right-4 sm:right-5 z-50 h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-blue-600 text-white shadow-glow-lg flex items-center justify-center border border-white/20 transition-all duration-200"
+        className="fixed bottom-4 right-4 sm:right-5 z-50 h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-teal-500 via-emerald-500 to-cyan-600 text-white shadow-glow-lg flex items-center justify-center border border-white/20 transition-all duration-200"
         aria-label="Open AI assistant"
       >
         <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6" />

@@ -32,7 +32,7 @@ const statusConfig: Record<string, { label: string; icon: any; color: string }> 
   pending: { label: "Pending", icon: Clock, color: "bg-amber-500/15 text-amber-700" },
   confirmed: { label: "Confirmed", icon: Check, color: "bg-blue-500/15 text-blue-700" },
   ready_for_pickup: { label: "Ready for Pickup", icon: Store, color: "bg-emerald-500/15 text-emerald-700" },
-  out_for_delivery: { label: "Out for Delivery", icon: Truck, color: "bg-purple-500/15 text-purple-700" },
+  out_for_delivery: { label: "Out for Delivery", icon: Truck, color: "bg-teal-500/15 text-teal-700" },
   delivered: { label: "Delivered", icon: Check, color: "bg-emerald-500/15 text-emerald-700" },
   picked_up: { label: "Picked Up", icon: Check, color: "bg-emerald-500/15 text-emerald-700" },
   cancelled: { label: "Cancelled", icon: Clock, color: "bg-red-500/15 text-red-700" },
@@ -56,18 +56,20 @@ export default function OrderDetailPage() {
     async function loadOrder() {
       try {
         const res = await fetch(`${API}/orders/${orderId}`);
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.id) {
+          setOrder(null);
+          return;
+        }
         setOrder(data);
-        
-        // Preview AuraPoints if order is completed
-        if (data && (data.status === "delivered" || data.status === "picked_up")) {
+        if (data.status === "delivered" || data.status === "picked_up") {
           try {
             const cashbackRes = await fetch(`${API}/wallet/preview-cashback?order_total=${data.total}`);
             if (cashbackRes.ok) {
-              const cashbackData = await cashbackRes.json();
+              const cashbackData = await cashbackRes.json().catch(() => ({}));
               setCashbackInfo({
-                amount: cashbackData.points_amount || cashbackData.cashback_amount,
-                rate: cashbackData.points_rate || cashbackData.cashback_rate,
+                amount: cashbackData.points_amount ?? cashbackData.cashback_amount ?? 0,
+                rate: cashbackData.points_rate ?? cashbackData.cashback_rate ?? "",
               });
             }
           } catch {}
@@ -95,8 +97,8 @@ export default function OrderDetailPage() {
     setCancelling(true);
     try {
       const res = await fetch(`${API}/orders/${orderId}/cancel`, { method: "POST" });
-      if (res.ok) {
-        const updated = await res.json();
+      const updated = await res.json().catch(() => null);
+      if (res.ok && updated?.id) {
         setOrder(updated);
         alert("Order cancelled successfully");
       } else {
@@ -118,15 +120,13 @@ export default function OrderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "delivered" })
       });
-      if (res.ok) {
-        const updated = await res.json();
+      const updated = await res.json().catch(() => null);
+      if (res.ok && updated?.id) {
         setOrder(updated);
-        
-        // Preview AuraPoints
         try {
           const cashbackRes = await fetch(`${API}/wallet/preview-cashback?order_total=${updated.total}`);
           if (cashbackRes.ok) {
-            const cashbackData = await cashbackRes.json();
+            const cashbackData = await cashbackRes.json().catch(() => ({}));
             setCashbackInfo({
               amount: cashbackData.points_amount || cashbackData.cashback_amount,
               rate: cashbackData.points_rate || cashbackData.cashback_rate,
@@ -189,17 +189,17 @@ export default function OrderDetailPage() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4"
+          className="bg-gradient-to-r from-teal-50 to-blue-50 dark:from-teal-950/20 dark:to-blue-950/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4"
         >
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
-              <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <div className="p-2 bg-teal-100 dark:bg-teal-900 rounded-lg">
+              <Sparkles className="h-5 w-5 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-purple-900 dark:text-purple-100 mb-1">
+              <h3 className="font-semibold text-teal-900 dark:text-teal-100 mb-1">
                 AuraPoints Rewards
               </h3>
-              <div className="text-sm text-purple-700 dark:text-purple-300 space-y-1">
+              <div className="text-sm text-teal-700 dark:text-teal-300 space-y-1">
                 <p>✓ Earn up to 5% AuraPoints when order is delivered</p>
                 <p>✓ Points credited automatically to your wallet</p>
                 <p>✓ Valid for 30 days from delivery</p>

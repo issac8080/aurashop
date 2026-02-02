@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   User,
@@ -9,25 +10,32 @@ import {
   MapPin,
   Store,
   Edit,
-  Mail,
-  Phone,
+  Plus,
+  ShoppingBag,
   ChevronRight,
   Wallet,
-  ShoppingBag,
-  CheckCircle2,
+  Gift,
+  HelpCircle,
   Calendar,
+  Bot,
+  Coins,
+  Zap,
+  Copy,
+  Check,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useCart, useAuth } from "@/app/providers";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, cn } from "@/lib/utils";
 
 const API = "/api";
 
 type Order = {
   id: string;
+  user_id: string;
   total: number;
   status: string;
   delivery_method: string;
@@ -39,21 +47,43 @@ type Profile = {
   name?: string;
   email?: string;
   phone?: string;
-  addresses: string[];
-  preferred_stores: string[];
+  addresses?: string[];
+  preferred_stores?: string[];
 };
 
+type WalletSummary = {
+  balance: number;
+  total_earned: number;
+  active_points?: number;
+};
+
+const ORDERS_PER_PAGE = 3;
+const WALLET_GOAL = 1000;
+
+function getReferralCode(email: string): string {
+  if (!email) return "GUEST" + Math.random().toString(36).slice(2, 9).toUpperCase();
+  const str = btoa(email).replace(/[^A-Za-z0-9]/g, "").slice(0, 7);
+  return (str || "AURA").toUpperCase();
+}
+
 export default function ProfilePage() {
+  const router = useRouter();
   const { sessionId } = useCart();
-  const { user: authUser } = useAuth();
-  const userId = sessionId;
+  const { user: authUser, login } = useAuth();
+  const userId = authUser?.email ?? sessionId ?? "";
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(true);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const wishlistCount = 0; // Placeholder – no wishlist backend; image shows 7
 
   useEffect(() => {
     if (authUser) {
@@ -66,8 +96,8 @@ export default function ProfilePage() {
     async function loadProfile() {
       try {
         const res = await fetch(`${API}/users/${userId}/profile`);
-        if (res.ok) {
-          const data = await res.json();
+        const data = await res.json().catch(() => null);
+        if (res.ok && data) {
           setProfile(data);
           setName(data.name || authUser?.name || "");
           setEmail(data.email || authUser?.email || "");
@@ -86,12 +116,41 @@ export default function ProfilePage() {
     async function loadOrders() {
       try {
         const res = await fetch(`${API}/users/${userId}/orders`);
-        const data = await res.json();
-        setOrders(data.orders || []);
-      } catch {}
+        const data = await res.json().catch(() => ({}));
+        setOrders(Array.isArray(data?.orders) ? data.orders : []);
+      } catch {
+        setOrders([]);
+      }
+    }
+    async function loadWallet() {
+      try {
+        const res = await fetch(`${API}/users/${userId}/wallet`);
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const summary = data?.summary;
+          const wallet = data?.wallet;
+          if (summary) {
+            setWalletSummary({
+              balance: summary.balance ?? 0,
+              total_earned: summary.total_earned ?? 0,
+              active_points: summary.active_points,
+            });
+          } else if (wallet) {
+            setWalletSummary({
+              balance: wallet.balance ?? 0,
+              total_earned: wallet.total_earned ?? 0,
+              active_points: undefined,
+            });
+          } else {
+            setWalletSummary(null);
+          }
+        }
+      } catch {
+        setWalletSummary(null);
+      }
     }
     if (userId) {
-      Promise.all([loadProfile(), loadOrders()]).finally(() => setLoading(false));
+      Promise.all([loadProfile(), loadOrders(), loadWallet()]).finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
@@ -102,45 +161,65 @@ export default function ProfilePage() {
       const res = await fetch(`${API}/users/${userId}/profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone }),
+        body: JSON.stringify({ name, email, phone, addresses: profile?.addresses ?? [], preferred_stores: profile?.preferred_stores ?? [] }),
       });
-      const data = await res.json();
-      setProfile(data);
-      setEditing(false);
+      const data = await res.json().catch(() => null);
+      if (data) setProfile(data);
+      if (res.ok) {
+        setEditing(false);
+        const newName = (name || authUser?.name || "").trim();
+        const newEmail = (email || authUser?.email || "").trim();
+        if (newEmail && login) login(newEmail, newName || newEmail);
+      }
     } catch {
       alert("Failed to update profile");
     }
   };
 
   const statusConfig: Record<string, { label: string; className: string }> = {
-    pending: { label: "Pending", className: "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 border-amber-200 dark:border-amber-500/30" },
-    confirmed: { label: "Confirmed", className: "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 border-blue-200 dark:border-blue-500/30" },
-    ready_for_pickup: { label: "Ready for pickup", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30" },
-    delivered: { label: "Delivered", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30" },
-    picked_up: { label: "Picked up", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30" },
+    pending: { label: "Pending", className: "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 border-amber-200" },
+    confirmed: { label: "Confirmed", className: "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 border-blue-200" },
+    ready_for_pickup: { label: "Ready for pickup", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200" },
+    delivered: { label: "Delivered", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200" },
+    picked_up: { label: "Delivered", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200" },
   };
 
-  const completedCount = orders.filter((o) => o.status === "delivered" || o.status === "picked_up").length;
+  const paginatedOrders = orders.slice((ordersPage - 1) * ORDERS_PER_PAGE, ordersPage * ORDERS_PER_PAGE);
+  const totalOrdersPages = Math.max(1, Math.ceil(orders.length / ORDERS_PER_PAGE));
+
+  const walletPoints = walletSummary?.active_points ?? walletSummary?.balance ?? 0;
+  const walletProgress = Math.min(1, walletPoints / WALLET_GOAL);
+  const referralCode = getReferralCode(userId);
+  const referralLink = typeof window !== "undefined" ? `${window.location.origin}/invite/${referralCode}` : `http://localhost:3000/invite/${referralCode}`;
+
+  const copyReferralLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  if (!authUser && !loading) {
+    router.replace("/login?from=/profile");
+    return null;
+  }
 
   if (loading) {
     return (
       <div className="py-6 sm:py-8 lg:py-10 space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-2">
-            <div className="h-9 w-56 rounded-xl bg-gradient-to-r from-gray-200 to-gray-100 dark:from-gray-800 dark:to-gray-700/80 animate-pulse" />
-            <div className="h-4 w-40 rounded-lg bg-gray-100 dark:bg-gray-800/60 animate-pulse" />
-          </div>
-          <div className="flex gap-2">
-            <div className="h-10 w-28 rounded-xl bg-gray-100 dark:bg-gray-800/60 animate-pulse" />
-            <div className="h-10 w-32 rounded-xl bg-gray-100 dark:bg-gray-800/60 animate-pulse" />
-          </div>
+        <div className="flex justify-between items-start">
+          <div className="h-10 w-48 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+          <div className="h-24 w-24 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
         </div>
         <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
           <div className="space-y-6">
-            <div className="h-72 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900/50 dark:to-gray-800/30 animate-pulse" />
-            <div className="h-44 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-indigo-50/20 dark:from-gray-900/50 dark:to-indigo-950/10 animate-pulse" />
+            <div className="h-72 rounded-2xl bg-gray-100 dark:bg-gray-800/50 animate-pulse" />
+            <div className="h-44 rounded-2xl bg-gray-100 dark:bg-gray-800/50 animate-pulse" />
           </div>
-          <div className="md:col-span-2 h-[28rem] rounded-2xl border border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900/50 dark:to-gray-800/30 animate-pulse" />
+          <div className="md:col-span-2 space-y-6">
+            <div className="h-80 rounded-2xl bg-gray-100 dark:bg-gray-800/50 animate-pulse" />
+            <div className="h-48 rounded-2xl bg-gray-100 dark:bg-gray-800/50 animate-pulse" />
+            <div className="h-32 rounded-2xl bg-gray-100 dark:bg-gray-800/50 animate-pulse" />
+          </div>
         </div>
       </div>
     );
@@ -148,320 +227,283 @@ export default function ProfilePage() {
 
   return (
     <div className="py-6 sm:py-8 lg:py-10 space-y-8 sm:space-y-10">
-      {/* Page header – premium with gradient accent */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-      >
-        <div>
-          <h1 className="font-heading text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
-            My Profile
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Manage your account, orders, and preferences
-          </p>
+      {/* Main Profile Section – title + robot on cloud with coins */}
+      <div className="relative">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+          <div>
+            <h1 className="font-heading text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
+              <Zap className="h-8 w-8 text-amber-500" />
+              My Profile
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Manage your account, care experience
+            </p>
+          </div>
+          {/* Robot on wavy cloud with gold coins */}
+          <div className="hidden md:flex relative w-28 h-28 shrink-0 items-center justify-center">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-sky-100 to-cyan-200 dark:from-sky-700 dark:to-cyan-600 rounded-tl-[2rem] rounded-tr-[2rem] rounded-bl-[2rem] shadow-lg border border-white/50 flex items-center justify-center">
+              <Bot className="h-12 w-12 text-sky-700 dark:text-white" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center border-2 border-amber-300">
+              <Coins className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="absolute top-0 right-0 w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center">
+              <Coins className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2 sm:gap-3">
-          <Link href="/wallet">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl font-semibold border-2 border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/80 dark:hover:bg-indigo-500/10 hover:shadow-md hover:shadow-indigo-500/10 transition-all duration-200"
-            >
-              <Wallet className="h-4 w-4 mr-2 text-indigo-500" />
-              Aura Wallet
-            </Button>
-          </Link>
-          <Link href="/products">
-            <Button
-              size="sm"
-              className="rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 hover:shadow-xl hover:shadow-indigo-500/30 text-white border-0 shadow-lg shadow-indigo-500/25 transition-all duration-200"
-            >
-              <ShoppingBag className="h-4 w-4 mr-2" />
-              Start Shopping
-            </Button>
-          </Link>
-        </div>
-      </motion.div>
+      </div>
 
       <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
-        {/* Left column – Profile + Quick Stats */}
+        {/* Left column */}
         <div className="space-y-6">
-          {/* Profile card */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
+          {/* Profile Details card */}
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
             <Card className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shadow-lg overflow-hidden">
-              <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" />
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="font-heading text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-                      <User className="h-5 w-5" />
-                    </div>
-                    Profile
+                    <User className="h-5 w-5 text-teal-500" />
+                    Profile Details
                   </CardTitle>
-                    {!editing && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditing(true)}
-                      className="rounded-xl text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-200"
-                    >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" aria-label="Add">
+                    <Plus className="h-4 w-4 text-gray-500" />
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {editing ? (
-                  <>
-                    <div>
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Name</label>
-                      <Input
-                        placeholder="Your name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="mt-1.5 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                      />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="relative shrink-0">
+                    <div className="w-20 h-20 rounded-full border-2 border-teal-400 dark:border-teal-500 bg-teal-50 dark:bg-teal-950/50 flex items-center justify-center overflow-hidden">
+                      {authUser?.name ? (
+                        <span className="text-2xl font-bold text-teal-600 dark:text-teal-400">
+                          {authUser.name.charAt(0).toUpperCase()}
+                        </span>
+                      ) : (
+                        <User className="h-10 w-10 text-teal-500" />
+                      )}
                     </div>
-                    <div>
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Email</label>
-                      <Input
-                        type="email"
-                        placeholder="your@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="mt-1.5 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                      />
+                    <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-teal-500 flex items-center justify-center border-2 border-white dark:border-gray-900">
+                      <Plus className="h-3.5 w-3.5 text-white" />
                     </div>
-                    <div>
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Phone</label>
-                      <Input
-                        type="tel"
-                        placeholder="Phone number"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="mt-1.5 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                      />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        onClick={handleSaveProfile}
-                        className="flex-1 rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 shadow-lg shadow-indigo-500/25 text-white border-0 transition-all duration-200"
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setEditing(false)}
-                        className="flex-1 rounded-xl font-semibold border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="space-y-3">
-                    {profile?.name && (
-                      <div className="flex items-center gap-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-4 py-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20">
-                          <User className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                        </div>
-                        <span className="font-medium text-gray-900 dark:text-white">{profile.name}</span>
-                      </div>
-                    )}
-                    {profile?.email && (
-                      <div className="flex items-center gap-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-4 py-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20">
-                          <Mail className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                        </div>
-                        <span className="font-medium text-gray-900 dark:text-white">{profile.email}</span>
-                      </div>
-                    )}
-                    {profile?.phone && (
-                      <div className="flex items-center gap-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-4 py-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20">
-                          <Phone className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                        </div>
-                        <span className="font-medium text-gray-900 dark:text-white">{profile.phone}</span>
-                      </div>
-                    )}
-                    {!profile?.name && !profile?.email && !profile?.phone && (
-                      <div className="rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/30 dark:bg-indigo-950/20 p-8 text-center">
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          No profile information yet. Click Edit to add details.
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setEditing(true)}
-                          className="mt-4 rounded-xl border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Add details
-                        </Button>
-                      </div>
-                    )}
                   </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Tell us a bit about yourself</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Update your contact and shipping info.</p>
+                  </div>
+                </div>
+                {editing ? (
+                  <div className="space-y-3 pt-2">
+                    <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} className="rounded-xl" />
+                    <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-xl" />
+                    <Input type="tel" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="rounded-xl" />
+                    <div className="flex gap-2">
+                      <Button onClick={handleSaveProfile} className="rounded-xl flex-1 bg-teal-600 hover:bg-teal-700 text-white border-0">Save</Button>
+                      <Button variant="outline" onClick={() => setEditing(false)} className="rounded-xl flex-1">Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button className="w-full rounded-xl font-semibold bg-teal-600 hover:bg-teal-700 text-white border-2 border-teal-500" onClick={() => setEditing(true)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Profile
+                  </Button>
                 )}
               </CardContent>
             </Card>
           </motion.div>
 
-          {/* Quick Stats – premium gradient card */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.3 }}
-          >
-            <Card className="rounded-2xl border-2 border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/60 to-purple-50/40 dark:from-indigo-950/30 dark:to-purple-950/20 shadow-xl shadow-indigo-500/5 overflow-hidden">
-              <div className="h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" />
+          {/* Quick Stats card */}
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05, duration: 0.3 }}>
+            <Card className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shadow-lg overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="font-heading text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20">
-                    <Package className="h-4 w-4" />
-                  </div>
+                  <ShoppingBag className="h-5 w-5 text-teal-500" />
                   Quick Stats
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between rounded-xl bg-white/80 dark:bg-gray-800/60 backdrop-blur px-4 py-3.5 border border-indigo-100 dark:border-indigo-900/40 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-center rounded-xl bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
                   <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Orders</span>
-                  <span className="font-heading text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
-                    {orders.length}
-                  </span>
+                  <span className="font-heading text-xl font-bold text-teal-600 dark:text-teal-400">{orders.length}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-xl bg-white/80 dark:bg-gray-800/60 backdrop-blur px-4 py-3.5 border border-indigo-100 dark:border-indigo-900/40 shadow-sm hover:shadow-md transition-shadow">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Completed</span>
-                  <span className="font-heading text-2xl font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                    <CheckCircle2 className="h-6 w-6" />
-                    {completedCount}
-                  </span>
+                <div className="flex justify-between items-center rounded-xl bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Wishlist</span>
+                  <span className="font-heading text-xl font-bold text-teal-600 dark:text-teal-400">{wishlistCount}</span>
+                </div>
+                <div className="rounded-xl bg-teal-50/80 dark:bg-teal-950/30 border border-teal-100 dark:border-teal-900/50 p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Aura Points</span>
+                    <span className="font-semibold text-teal-700 dark:text-teal-300">
+                      {Math.round(walletPoints)} / {WALLET_GOAL.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${walletProgress * 100}%` }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-1">
+                    <Coins className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <Link href="/wallet" className="block">
+                    <Button variant="outline" size="sm" className="w-full rounded-xl border-teal-300 dark:border-teal-600 text-teal-700 dark:text-teal-300">
+                      View Aura Wallet
+                    </Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>
           </motion.div>
         </div>
 
-        {/* Right column – Orders */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.3 }}
-          className="md:col-span-2"
-        >
-          <Card className="rounded-2xl border-2 border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-b from-white to-indigo-50/20 dark:from-gray-900/80 dark:to-indigo-950/20 shadow-xl shadow-indigo-500/5 overflow-hidden h-full hover:shadow-indigo-500/10 transition-shadow duration-200">
-            <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" />
-            <CardHeader className="pb-4">
-              <CardTitle className="font-heading text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20">
-                  <Package className="h-4 w-4" />
+        {/* Right column */}
+        <div className="md:col-span-2 space-y-6">
+          {/* My Orders card */}
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.3 }}>
+            <Card className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shadow-lg overflow-hidden">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="font-heading text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <ShoppingBag className="h-5 w-5 text-teal-500" />
+                    My Orders
+                  </CardTitle>
+                  <Link href="/orders" className="text-sm font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5">
+                    View All <ChevronRight className="h-4 w-4" />
+                  </Link>
                 </div>
-                My Orders
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {orders.length === 0 ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="relative overflow-hidden rounded-3xl border-2 border-dashed border-indigo-200 dark:border-indigo-800/50 bg-gradient-to-br from-indigo-50/60 to-purple-50/40 dark:from-gray-900/80 dark:to-indigo-950/30 shadow-xl shadow-gray-200/50 dark:shadow-none"
-                >
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.15),transparent)] pointer-events-none" />
-                  <div className="relative p-10 sm:p-14 text-center">
-                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 mb-6">
-                      <Package className="h-10 w-10" />
-                    </div>
-                    <h3 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                      No orders yet
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-8 max-w-sm mx-auto">
-                      Your order history will appear here once you place your first order.
-                    </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {orders.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-8 text-center">
+                    <Package className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No orders yet.</p>
                     <Link href="/products">
-                      <Button
-                        size="lg"
-                        className="rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 hover:shadow-xl hover:shadow-indigo-500/30 text-white border-0 shadow-lg shadow-indigo-500/25 transition-all duration-200"
-                      >
-                        <ShoppingBag className="h-5 w-5 mr-2" />
-                        Start Shopping
-                      </Button>
+                      <Button size="sm" className="mt-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white">Start Shopping</Button>
                     </Link>
                   </div>
-                </motion.div>
-              ) : (
-                <div className="space-y-3">
-                  {orders.map((order, i) => {
-                    const config = statusConfig[order.status] || {
-                      label: order.status.replace(/_/g, " "),
-                      className: "bg-gray-100 text-gray-800 dark:bg-gray-500/20 dark:text-gray-300 border-gray-200 dark:border-gray-600",
-                    };
-                    return (
-                      <motion.div
-                        key={order.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        whileHover={{ y: -2 }}
-                      >
-                        <Link href={`/orders/${order.id}`}>
-                          <div className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-800/50 p-4 sm:p-5 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600/50 hover:shadow-lg hover:shadow-indigo-500/10 transition-all duration-200">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2 mb-2">
-                                <span className="font-heading font-bold text-gray-900 dark:text-white">
-                                  #{order.id.slice(0, 8)}
-                                </span>
-                                <Badge
-                                  variant="outline"
-                                  className={`rounded-lg font-medium border ${config.className}`}
-                                >
-                                  {config.label}
-                                </Badge>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                                <span className="flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-700/50 px-2 py-1">
-                                  {order.delivery_method === "store_pickup" ? (
-                                    <Store className="h-3.5 w-3.5 text-indigo-500" />
-                                  ) : (
-                                    <MapPin className="h-3.5 w-3.5 text-indigo-500" />
-                                  )}
-                                  {order.delivery_method === "store_pickup" ? "Store Pickup" : "Home Delivery"}
-                                </span>
-                                <span className="flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-700/50 px-2 py-1">
-                                  <Calendar className="h-3.5 w-3.5 text-indigo-500" />
-                                  {new Date(order.created_at).toLocaleDateString(undefined, {
-                                    day: "numeric",
-                                    month: "short",
-                                    year: "numeric",
-                                  })}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3 shrink-0">
-                              <span className="font-heading text-lg font-bold bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
-                                {formatPrice(order.total)}
+                ) : (
+                  <>
+                    {paginatedOrders.map((order) => {
+                      const config = statusConfig[order.status] || { label: order.status.replace(/_/g, " "), className: "bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200 border-gray-200" };
+                      return (
+                        <Link key={order.id} href={`/orders/${order.id}`}>
+                          <div className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 p-4 hover:border-teal-300 dark:hover:border-teal-600 transition-colors">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <span className="font-mono font-semibold text-gray-900 dark:text-white">#{order.id.slice(0, 8)}</span>
+                              <Badge variant="outline" className={cn("rounded-md text-xs font-medium border shrink-0", config.className)}>
+                                {config.label}
+                              </Badge>
+                              <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                                {order.delivery_method === "store_pickup" ? <Store className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
+                                {order.delivery_method === "store_pickup" ? "Store Pickup" : "Home Delivery"}
                               </span>
-                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800/50 transition-colors">
-                                <ChevronRight className="h-5 w-5" />
-                              </div>
+                              <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                                <Calendar className="h-3.5 w-3.5" />
+                                {new Date(order.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-bold text-teal-600 dark:text-teal-400">{formatPrice(order.total)}</span>
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
                             </div>
                           </div>
                         </Link>
-                      </motion.div>
-                    );
-                  })}
+                      );
+                    })}
+                    {totalOrdersPages > 1 && (
+                      <div className="flex justify-center gap-1 pt-2">
+                        {Array.from({ length: totalOrdersPages }, (_, i) => i + 1).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setOrdersPage(p)}
+                            className={cn(
+                              "w-8 h-8 rounded-lg text-sm font-medium transition-colors",
+                              p === ordersPage ? "bg-teal-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-teal-100 dark:hover:bg-teal-900/30"
+                            )}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Refer & Earn card */}
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.3 }}>
+            <Card className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shadow-lg overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="font-heading text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Gift className="h-5 w-5 text-amber-500" />
+                  Refer & Earn
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Share, invite, and earn rewards! 🎉</p>
+                <div className="flex gap-2">
+                  <Input readOnly value={referralLink} className="rounded-xl font-mono text-sm bg-gray-50 dark:bg-gray-800" />
+                  <Button onClick={copyReferralLink} className="rounded-xl shrink-0 bg-teal-600 hover:bg-teal-700 text-white border-0">
+                    {copiedLink ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                    Copy Link
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex flex-col items-center justify-center w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/50 border-2 border-emerald-400 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
+                    ₹50
+                    <Check className="h-4 w-4 mt-0.5" />
+                  </div>
+                  <div className="flex flex-col items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 text-gray-500 font-bold text-xs">
+                    ₹100
+                    <Lock className="h-4 w-4 mt-0.5" />
+                  </div>
+                  <div className="flex flex-col items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 text-gray-500 font-bold text-xs">
+                    ₹150
+                    <Lock className="h-4 w-4 mt-0.5" />
+                  </div>
+                  <Bot className="h-6 w-6 text-sky-500 ml-1" />
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Need help? card */}
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.3 }}>
+            <Card className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 shadow-lg overflow-hidden">
+              <CardContent className="p-5 flex flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
+                    <HelpCircle className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-bold text-gray-900 dark:text-white">Need help?</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Need help with your account?</p>
+                  </div>
+                </div>
+                <Button
+                  className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white border-0 shrink-0"
+                  onClick={() => {
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(
+                        new CustomEvent("open-aurashop-chat", { detail: { initialMessage: "I need help with my account" } })
+                      );
+                    }
+                  }}
+                >
+                  Visit Help Center
+                </Button>
+                <div className="hidden sm:block w-14 h-14 rounded-xl bg-gradient-to-br from-sky-200 to-cyan-300 dark:from-sky-600 dark:to-cyan-500 flex items-center justify-center shrink-0">
+                  <Bot className="h-7 w-7 text-sky-700 dark:text-white" />
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       </div>
     </div>
   );

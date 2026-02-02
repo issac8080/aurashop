@@ -49,9 +49,9 @@ export function SpinWheel({ orderId, sessionId, onClose, onDone }: SpinWheelProp
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId }),
       });
-      const data = await res.json();
-      const pointsWon = data.points_won ?? 0;
-      const message = data.message ?? (pointsWon === 0 ? "Better luck next time!" : `You won ${pointsWon} AuraPoints!`);
+      const data = await res.json().catch(() => ({}));
+      const pointsWon = data?.points_won ?? 0;
+      const message = data?.message ?? (pointsWon === 0 ? "Better luck next time!" : `You won ${pointsWon} AuraPoints!`);
       const index = pointsToSegmentIndex(pointsWon);
       const segmentAngle = 360 / SEGMENTS.length;
       const fullSpins = 5;
@@ -174,7 +174,7 @@ export function SpinWheel({ orderId, sessionId, onClose, onDone }: SpinWheelProp
                     Close
                   </Button>
                   {result.points_won > 0 && (
-                    <Button className="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-700" onClick={onDone}>
+                    <Button className="flex-1 rounded-xl bg-primary hover:opacity-90" onClick={onDone}>
                       View wallet
                     </Button>
                   )}

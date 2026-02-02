@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Sparkles, Mail, LogIn, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { sendOtp, verifyOtp } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -52,7 +53,8 @@ export default function LoginPage() {
     try {
       const data = await verifyOtp(email, otp);
       login(data.email, data.name);
-      router.push("/profile");
+      const from = searchParams.get("from");
+      router.push(from && from.startsWith("/") ? from : "/profile");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid or expired OTP.");
     } finally {
@@ -74,12 +76,12 @@ export default function LoginPage() {
         transition={{ duration: 0.4 }}
         className="w-full max-w-md"
       >
-        <div className="rounded-3xl border-2 border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-b from-white to-indigo-50/30 dark:from-gray-900/90 dark:to-indigo-950/20 shadow-2xl shadow-indigo-500/10 overflow-hidden">
-          <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" />
+        <div className="rounded-3xl border-2 border-teal-100 dark:border-teal-900/40 bg-gradient-to-b from-white to-teal-50/30 dark:from-gray-900/90 dark:to-teal-950/20 shadow-2xl shadow-teal-500/10 overflow-hidden">
+          <div className="h-1.5 bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500" />
           <div className="p-8 sm:p-10 space-y-8">
             <div className="text-center space-y-2">
               <Link href="/" className="inline-flex items-center gap-2 font-heading font-bold text-xl text-gray-900 dark:text-white hover:opacity-90">
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-blue-600 text-white shadow-lg shadow-indigo-500/30">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-emerald-500 to-cyan-600 text-white shadow-lg shadow-teal-500/30">
                   <Sparkles className="h-5 w-5" />
                 </span>
                 AuraShop
@@ -110,7 +112,7 @@ export default function LoginPage() {
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                      className="pl-10 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-primary focus:ring-2 focus:ring-primary/20"
                       autoComplete="email"
                     />
                   </div>
@@ -118,7 +120,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-xl h-12 font-semibold bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-600 hover:from-indigo-600 hover:via-purple-600 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30"
+                  className="w-full rounded-xl h-12 font-semibold bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-600 hover:from-teal-600 hover:via-emerald-600 hover:to-cyan-700 text-white shadow-lg shadow-teal-500/30"
                 >
                   {loading ? "Sending..." : "Send OTP"}
                 </Button>
@@ -143,7 +145,7 @@ export default function LoginPage() {
                       placeholder="123456"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      className="pl-10 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-center text-lg tracking-[0.4em]"
+                      className="pl-10 rounded-xl border-2 border-gray-200 dark:border-gray-600 focus:border-primary focus:ring-2 focus:ring-primary/20 text-center text-lg tracking-[0.4em]"
                       maxLength={6}
                       autoComplete="one-time-code"
                     />
@@ -152,7 +154,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   disabled={loading || otp.length < 6}
-                  className="w-full rounded-xl h-12 font-semibold bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-600 hover:from-indigo-600 hover:via-purple-600 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30"
+                  className="w-full rounded-xl h-12 font-semibold bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-600 hover:from-teal-600 hover:via-emerald-600 hover:to-cyan-700 text-white shadow-lg shadow-teal-500/30"
                 >
                   <LogIn className="h-5 w-5 mr-2" />
                   {loading ? "Verifying..." : "Verify & Login"}
@@ -164,13 +166,13 @@ export default function LoginPage() {
             )}
 
             <p className="text-center text-xs text-gray-500 dark:text-gray-400">
-              No password needed. OTP is shown in the backend terminal (run: <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">uvicorn app.main:app</code>).
+              No password needed. For local demo you can use OTP <strong>123456</strong> for any email. Otherwise check the backend terminal for the OTP.
             </p>
           </div>
         </div>
 
         <p className="text-center mt-6">
-          <Link href="/" className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+          <Link href="/" className="text-sm font-medium text-primary hover:underline">
             ← Back to home
           </Link>
         </p>

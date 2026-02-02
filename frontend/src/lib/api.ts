@@ -3,7 +3,7 @@ const API = "/api";
 function isNetworkError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   if (e instanceof TypeError && /fetch|network/i.test(msg)) return true;
-  return /ECONNREFUSED|Failed to fetch|NetworkError/i.test(msg);
+  return /ECONNREFUSED|ECONNRESET|Failed to fetch|NetworkError/i.test(msg);
 }
 
 export type Product = {
@@ -123,7 +123,7 @@ export async function trackEvent(payload: EventPayload): Promise<void> {
 
 export async function fetchRecommendations(
   sessionId: string,
-  opts?: { limit?: number; max_price?: number; category?: string; exclude_product_ids?: string }
+  opts?: { limit?: number; max_price?: number; category?: string; exclude_product_ids?: string; user_id?: string }
 ): Promise<{ recommendations: RecommendationItem[] }> {
   try {
     const search = new URLSearchParams({ session_id: sessionId });
@@ -131,6 +131,7 @@ export async function fetchRecommendations(
     if (opts?.max_price != null) search.set("max_price", String(opts.max_price));
     if (opts?.category) search.set("category", opts.category);
     if (opts?.exclude_product_ids) search.set("exclude_product_ids", opts.exclude_product_ids);
+    if (opts?.user_id) search.set("user_id", opts.user_id);
     const res = await fetch(`${API}/recommendations?${search}`);
     if (!res.ok) throw new Error("Failed to fetch recommendations");
     return res.json();
@@ -176,27 +177,43 @@ export async function chat(
   }
 }
 
+export type ChatAction = { type: string; label: string; payload: string };
+
+export type ChatContext = {
+  current_page?: string;
+  user_id?: string | null;
+  cart_count?: number;
+  cart_total?: number;
+  recent_product_ids?: string[];
+};
+
 export type ChatStreamCallbacks = {
   onChunk: (content: string) => void;
-  onDone: (productIds: string[]) => void;
+  onDone: (productIds: string[], actions?: ChatAction[]) => void;
   onError?: (err: Error) => void;
 };
 
-/** Stream chat response (SSE) for a generative-AI feel. Calls onChunk for each token, onDone with product_ids. */
+/** Stream chat response (SSE). Context-aware Aura AI. Calls onChunk for each token, onDone with product_ids and actions. */
 export async function chatStream(
   sessionId: string,
   message: string,
   history: { role: string; content: string }[] | undefined,
-  callbacks: ChatStreamCallbacks
+  callbacks: ChatStreamCallbacks,
+  context?: ChatContext
 ): Promise<void> {
   try {
     const res = await fetch(`${API}/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, message, history: history ?? [] }),
+      body: JSON.stringify({
+        session_id: sessionId,
+        message,
+        history: history ?? [],
+        context: context ?? undefined,
+      }),
     });
     if (!res.ok || !res.body) {
-      callbacks.onDone([]);
+      callbacks.onDone([], []);
       if (res.status >= 400) callbacks.onError?.(new Error("Chat stream failed"));
       return;
     }
@@ -204,6 +221,7 @@ export async function chatStream(
     const decoder = new TextDecoder();
     let buffer = "";
     const productIds: string[] = [];
+    let actions: ChatAction[] = [];
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -213,11 +231,17 @@ export async function chatStream(
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           try {
-            const data = JSON.parse(line.slice(6)) as { content?: string; done?: boolean; product_ids?: string[] };
+            const data = JSON.parse(line.slice(6)) as {
+              content?: string;
+              done?: boolean;
+              product_ids?: string[];
+              actions?: ChatAction[];
+            };
             if (data.content != null) callbacks.onChunk(data.content);
-            if (data.done === true && Array.isArray(data.product_ids)) {
-              productIds.push(...data.product_ids);
-              callbacks.onDone(productIds);
+            if (data.done === true) {
+              if (Array.isArray(data.product_ids)) productIds.push(...data.product_ids);
+              if (Array.isArray(data.actions)) actions = data.actions;
+              callbacks.onDone(productIds, actions);
               return;
             }
           } catch {
@@ -226,10 +250,10 @@ export async function chatStream(
         }
       }
     }
-    callbacks.onDone(productIds);
+    callbacks.onDone(productIds, actions);
   } catch (e) {
     callbacks.onError?.(e instanceof Error ? e : new Error(String(e)));
-    callbacks.onDone([]);
+    callbacks.onDone([], []);
   }
 }
 
@@ -254,14 +278,19 @@ export async function addToCart(sessionId: string, productId: string): Promise<v
 
 /** Send OTP to email – OTP is printed in the backend terminal. */
 export async function sendOtp(email: string): Promise<{ success: boolean; message?: string }> {
-  const res = await fetch(`${API}/auth/send-otp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: email.trim().toLowerCase() }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || "Failed to send OTP");
-  return data;
+  try {
+    const res = await fetch(`${API}/auth/send-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Failed to send OTP");
+    return data;
+  } catch (e) {
+    if (isNetworkError(e)) throw new Error("Backend not available. Start it with: cd backend && uvicorn app.main:app --reload --port 8000");
+    throw e;
+  }
 }
 
 /** Verify OTP and get user info for login. */
@@ -269,14 +298,19 @@ export async function verifyOtp(
   email: string,
   otp: string
 ): Promise<{ success: boolean; email: string; name: string }> {
-  const res = await fetch(`${API}/auth/verify-otp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: email.trim().toLowerCase(), otp: otp.trim() }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || "Invalid or expired OTP");
-  return data;
+  try {
+    const res = await fetch(`${API}/auth/verify-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), otp: otp.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Invalid or expired OTP");
+    return data;
+  } catch (e) {
+    if (isNetworkError(e)) throw new Error("Backend not available. Start it with: cd backend && uvicorn app.main:app --reload --port 8000");
+    throw e;
+  }
 }
 
 export async function removeFromCart(sessionId: string, productId: string): Promise<void> {
@@ -316,6 +350,54 @@ export type CouponGameResult = {
   discount: number;
   message: string;
 };
+
+export type CouponValidateResult = {
+  valid: boolean;
+  discount: number;
+  title: string | null;
+  reason: string | null;
+};
+
+export async function validateCoupon(
+  code: string,
+  orderTotal: number,
+  userId?: string | null
+): Promise<CouponValidateResult> {
+  const params = new URLSearchParams({ code: code.trim(), order_total: String(orderTotal) });
+  if (userId) params.set("user_id", userId);
+  const res = await fetch(`${API}/coupons/validate?${params}`);
+  const data = await res.json().catch(() => ({}));
+  return {
+    valid: !!data.valid,
+    discount: Number(data.discount) || 0,
+    title: data.title ?? null,
+    reason: data.reason ?? null,
+  };
+}
+
+export type DiscountCoupon = {
+  code: string;
+  discount: number;
+  type: string;
+  min_order: number;
+  title: string;
+  category?: string | null;
+};
+
+export async function fetchDiscounts(userId?: string | null): Promise<{
+  coupons: DiscountCoupon[];
+  personalized: DiscountCoupon[];
+}> {
+  const params = new URLSearchParams();
+  if (userId) params.set("user_id", userId);
+  const res = await fetch(`${API}/discounts?${params}`);
+  if (!res.ok) return { coupons: [], personalized: [] };
+  const data = await res.json().catch(() => ({}));
+  return {
+    coupons: Array.isArray(data.coupons) ? data.coupons : [],
+    personalized: Array.isArray(data.personalized) ? data.personalized : [],
+  };
+}
 
 export async function playCouponGame(sessionId: string): Promise<CouponGameResult> {
   const res = await fetch(`${API}/home/coupon-game`, {

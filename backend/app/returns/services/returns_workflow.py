@@ -16,7 +16,7 @@ from app.returns.services.vision_agent import VisionAgent
 from app.returns.services.policy_agent import PolicyAgent
 from app.returns.services.resolution_agent import ResolutionAgent
 from app.returns.services.communication_agent import CommunicationAgent
-from app.returns.services.embedding_service import embedding_service
+from app.returns.services.embedding_service import get_embedding_service
 from app.returns.config import settings
 
 # Set up logger
@@ -360,10 +360,11 @@ def description_comparison_node(state: ReturnProcessingState) -> ReturnProcessin
         user_description = return_data.description
         openai_description = vision_output.image_description
         
-        # Use embedding similarity only (no GPT-4o)
-        user_embedding = embedding_service.embed_text(user_description)
-        openai_embedding = embedding_service.embed_text(openai_description)
-        similarity = embedding_service.cosine_similarity(user_embedding, openai_embedding)
+        # Use embedding similarity only (no GPT-4o); lazy-load model on first use
+        embedding_svc = get_embedding_service()
+        user_embedding = embedding_svc.embed_text(user_description)
+        openai_embedding = embedding_svc.embed_text(openai_description)
+        similarity = embedding_svc.cosine_similarity(user_embedding, openai_embedding)
         similarity = max(0.0, min(1.0, similarity))
         
         logger.info(f"[Description Comparison] Similarity: {similarity:.2%}")

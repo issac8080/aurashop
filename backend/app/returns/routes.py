@@ -2,6 +2,7 @@
 Return & Exchange API Routes (Authentication Removed)
 Autonomous operation - works with Order ID, Product ID, and customer contact info
 """
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -14,7 +15,42 @@ from app.returns.schemas import (
 from app.returns.services.returns_service import ReturnsService
 from app.returns.db_models import Return, Order
 
-router = APIRouter(prefix="/api/returns", tags=["returns"])
+# Prefix /returns so Next.js rewrite /api/:path* -> :path* hits /returns
+router = APIRouter(prefix="/returns", tags=["returns"])
+
+
+def _sync_order_from_main_app(db: Session, order_id: str) -> Order:
+    """If order is not in returns DB, create it from main app order (orders.json)."""
+    existing = db.query(Order).filter(Order.order_id == order_id).first()
+    if existing:
+        return existing
+    from app.order_service import get_order as main_get_order
+    from app.data_store import get_product
+    main_order = main_get_order(order_id)
+    if not main_order or not main_order.items:
+        raise ValueError(f"Order {order_id} not found")
+    first = main_order.items[0]
+    product = get_product(first.product_id)
+    product_name = product.name if product else first.product_id
+    product_category = product.category if product else "General"
+    try:
+        purchase_date = datetime.fromisoformat(
+            main_order.created_at.replace("Z", "+00:00")
+        )
+    except Exception:
+        purchase_date = datetime.utcnow()
+    status_val = getattr(main_order.status, "value", None) or str(main_order.status)
+    order_row = Order(
+        order_id=main_order.id,
+        customer_id=main_order.user_id,
+        product_name=product_name,
+        product_category=product_category,
+        purchase_date=purchase_date,
+        status=status_val,
+    )
+    db.add(order_row)
+    db.flush()
+    return order_row
 
 
 @router.post("/", response_model=ReturnResponse, status_code=status.HTTP_201_CREATED)
@@ -30,6 +66,8 @@ async def create_return_request(
     - Product ID/SKU
     - Customer contact info (email/phone)
     
+    If order is not in returns DB, it is synced from main app orders (orders.json).
+    
     Flow:
     - FUNCTIONAL damage (Electronics only) → Manual review
     - PHYSICAL damage → AI pipeline (VisionAgent → PolicyAgent → ResolutionAgent)
@@ -39,6 +77,7 @@ async def create_return_request(
         db: Database session
     """
     try:
+        _sync_order_from_main_app(db, return_data.order_id)
         return_obj = ReturnsService.process_return_request(db, return_data)
         db.commit()
         db.refresh(return_obj)

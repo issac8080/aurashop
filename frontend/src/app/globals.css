@@ -6,40 +6,39 @@
   :root {
     --background: 240 20% 99%;
     --foreground: 224 30% 12%;
-    --primary: 243 75% 59%;
+    --primary: 174 58% 42%;
     --primary-foreground: 0 0% 100%;
     --muted: 240 15% 96%;
     --muted-foreground: 240 5% 45%;
-    --accent: 243 60% 95%;
-    --accent-foreground: 243 75% 40%;
+    --accent: 174 45% 94%;
+    --accent-foreground: 174 58% 30%;
     --card: 0 0% 100%;
     --card-foreground: 224 30% 12%;
     --border: 240 12% 90%;
-    --ring: 243 75% 59%;
+    --ring: 174 58% 42%;
     --radius: 0.75rem;
     --radius-lg: 1rem;
     --radius-xl: 1.25rem;
     --radius-2xl: 1.5rem;
     --radius-3xl: 1.75rem;
-    /* AI accent: neon cyan/green for highlights */
-    --ai-accent: 173 80% 40%;
-    --ai-glow: 243 75% 59%;
+    --ai-accent: 160 84% 39%;
+    --ai-glow: 174 58% 42%;
   }
   .dark {
     --background: 224 30% 6%;
     --foreground: 240 10% 96%;
-    --primary: 243 75% 65%;
+    --primary: 174 55% 48%;
     --primary-foreground: 0 0% 100%;
     --muted: 224 20% 12%;
     --muted-foreground: 240 5% 60%;
-    --accent: 243 40% 16%;
-    --accent-foreground: 243 75% 78%;
+    --accent: 174 35% 16%;
+    --accent-foreground: 174 55% 75%;
     --card: 224 25% 9%;
     --card-foreground: 240 10% 96%;
     --border: 224 15% 18%;
-    --ring: 243 75% 65%;
-    --ai-accent: 173 70% 50%;
-    --ai-glow: 243 75% 55%;
+    --ring: 174 55% 48%;
+    --ai-accent: 160 70% 48%;
+    --ai-glow: 174 55% 45%;
   }
 }
 
@@ -56,9 +55,9 @@ body {
   color: hsl(var(--foreground));
   font-feature-settings: "rlig" 1, "calt" 1;
   background-image:
-    radial-gradient(ellipse 140% 100% at 0% 0%, hsla(243, 75%, 59%, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse 100% 80% at 100% 0%, hsla(199, 89%, 48%, 0.06) 0%, transparent 45%),
-    radial-gradient(ellipse 80% 60% at 100% 100%, hsla(262, 83%, 58%, 0.05) 0%, transparent 50%);
+    radial-gradient(ellipse 140% 100% at 0% 0%, hsla(174, 58%, 42%, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 80% at 100% 0%, hsla(160, 84%, 39%, 0.06) 0%, transparent 45%),
+    radial-gradient(ellipse 80% 60% at 100% 100%, hsla(174, 55%, 48%, 0.05) 0%, transparent 50%);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -109,11 +108,11 @@ h1, h2, h3, h4, h5, h6 {
   }
   /* Gradient text */
   .text-gradient-ai {
-    @apply bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 bg-clip-text text-transparent;
   }
   /* Gradient pill (AI badges) */
   .pill-ai-best {
-    @apply bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-0 shadow-md shadow-indigo-500/30;
+    @apply bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 shadow-md shadow-teal-500/30;
   }
   .pill-ai-value {
     @apply bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-0 shadow-md shadow-emerald-500/25;

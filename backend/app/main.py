@@ -42,13 +42,19 @@ from app.order_service import (
     get_user_profile,
     create_or_update_profile,
     get_available_stores,
+    get_product_availability,
 )
 from app.auth_otp import send_otp as auth_send_otp, verify_otp as auth_verify_otp
 from app.coupon_game import (
     play as coupon_game_play,
     play_jackpot as coupon_game_jackpot,
     play_scratch as coupon_game_scratch,
-    validate_coupon as coupon_validate,
+)
+from app.coupon_service import (
+    validate_coupon as coupon_validate_checkout,
+    mark_coupon_used,
+    get_discount_amount,
+    COUPONS as ALL_COUPONS,
 )
 from app.wallet_service import (
     get_wallet,
@@ -70,11 +76,16 @@ from app.wallet_service import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
     try:
         load_products()
     except Exception:
         pass
-    yield
+    try:
+        yield
+    except asyncio.CancelledError:
+        # Normal during uvicorn --reload; re-raise so shutdown runs
+        raise
 
 
 app = FastAPI(
@@ -127,6 +138,15 @@ def list_products(
         return {"products": []}
 
 
+@app.get("/products/{product_id}/availability")
+def product_availability(
+    product_id: str,
+    store: str | None = Query(None, description="Current store ID (e.g. store_1). If omitted, returns all options."),
+):
+    """Check if product is in stock at a store; return other stores with stock and deliver_online option."""
+    return get_product_availability(product_id, store)
+
+
 @app.get("/products/{product_id}")
 def product_detail(product_id: str):
     p = get_product(product_id)
@@ -149,6 +169,7 @@ def track_event(payload: EventPayload):
 @app.get("/recommendations")
 def recommendations(
     session_id: str = Query(..., description="Session ID"),
+    user_id: str | None = Query(None, description="Logged-in user email for personalized recs"),
     limit: int = Query(5, le=20),
     max_price: float | None = Query(None),
     category: str | None = Query(None),
@@ -158,6 +179,7 @@ def recommendations(
     try:
         recs = get_recommendations(
             session_id=session_id or "",
+            user_id=user_id,
             limit=limit,
             max_price=max_price,
             category=category,
@@ -178,16 +200,16 @@ def chat_endpoint(body: ChatRequest):
     return result
 
 
-def _sse_stream(session_id: str, message: str, history: list):
+def _sse_stream(session_id: str, message: str, history: list, context: dict | None = None):
     import json
-    for chunk in ai_chat_stream(session_id=session_id, message=message, history=history):
+    for chunk in ai_chat_stream(session_id=session_id, message=message, history=history, context=context):
         yield f"data: {json.dumps(chunk)}\n\n"
 
 
 @app.post("/chat/stream")
 def chat_stream_endpoint(body: ChatRequest):
     return StreamingResponse(
-        _sse_stream(body.session_id, body.message, body.history or []),
+        _sse_stream(body.session_id, body.message, body.history or [], body.context),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
@@ -233,10 +255,21 @@ def home_scratch(body: SpinRequest):
 
 
 @app.get("/coupons/validate")
-def validate_coupon_endpoint(code: str = Query(...), order_total: float = Query(...)):
-    """Validate a coupon code for an order total. Returns discount amount or 0."""
-    discount = coupon_validate(code, order_total)
-    return {"valid": discount is not None, "discount": discount or 0}
+def validate_coupon_endpoint(
+    code: str = Query(...),
+    order_total: float = Query(...),
+    user_id: str | None = Query(None, description="User ID for first-time-only check"),
+):
+    """Validate a coupon code for an order total. First-time use only per user."""
+    discount, title, reason = coupon_validate_checkout(code, order_total, user_id)
+    if reason:
+        return {
+            "valid": False,
+            "discount": 0,
+            "reason": reason,
+            "title": None,
+        }
+    return {"valid": True, "discount": discount or 0, "title": title, "reason": None}
 
 
 @app.get("/session/{session_id}/context")
@@ -272,6 +305,36 @@ def clear_cart_endpoint(session_id: str):
     return {"message": "Cart cleared", "success": True}
 
 
+@app.get("/discounts")
+def list_discounts(user_id: str | None = Query(None, description="Logged-in user for personalized coupons")):
+    """List discount coupons. Personalized picks when user_id provided (by category/orders)."""
+    all_coupons = ALL_COUPONS
+    personalized = []
+    if user_id:
+        try:
+            from app.order_service import get_user_orders
+            orders = get_user_orders(user_id)
+            categories_ordered = set()
+            for o in (orders or [])[:10]:
+                for item in getattr(o, "items", []) or []:
+                    pid = getattr(item, "product_id", None)
+                    if pid:
+                        from app.data_store import get_product
+                        p = get_product(pid)
+                        if p and p.category:
+                            categories_ordered.add(p.category)
+            for c in all_coupons:
+                if c.get("category") and c["category"] in categories_ordered:
+                    personalized.append(c)
+            if not personalized:
+                personalized = [all_coupons[0], all_coupons[1], all_coupons[7]]
+        except Exception:
+            personalized = all_coupons[:3]
+    else:
+        personalized = all_coupons[:3]
+    return {"coupons": all_coupons, "personalized": personalized}
+
+
 # Orders and Store Pickup
 
 
@@ -283,14 +346,32 @@ def list_stores():
 
 @app.post("/orders")
 def create_new_order(body: CreateOrderRequest):
-    """Create a new order (home delivery or store pickup)."""
+    """Create a new order (home delivery or store pickup). Optional coupon: first-time use only per user."""
+    discount = 0.0
+    if body.coupon_code and body.coupon_code.strip():
+        subtotal = sum(item.price * item.quantity for item in body.items)
+        d, title, reason = coupon_validate_checkout(
+            body.coupon_code, subtotal, body.user_id
+        )
+        if reason:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Coupon invalid or already used",
+                    "reason": reason,
+                },
+            )
+        discount = d or 0
     order = create_order(
         user_id=body.user_id,
         items=body.items,
         delivery_method=body.delivery_method,
         delivery_address=body.delivery_address,
         store_location=body.store_location,
+        discount=discount,
     )
+    if body.coupon_code and body.coupon_code.strip() and discount > 0:
+        mark_coupon_used(body.user_id, body.coupon_code)
     return order.model_dump()
 
 
@@ -307,6 +388,7 @@ def get_order_detail(order_id: str):
         items_enriched.append({
             "product_id": item.product_id,
             "product_name": product.name if product else item.product_id,
+            "product_category": product.category if product else "General",
             "quantity": item.quantity,
             "price": item.price,
             "image_url": product.image_url if product else None,
@@ -510,6 +592,8 @@ def add_money_endpoint(user_id: str = Query(...), amount: float = Query(...), pa
 
 try:
     from app.returns.routes import router as returns_router
+    from app.returns.db import init_db as init_returns_db
+    init_returns_db()
     app.include_router(returns_router)
     print("[OK] Return & Exchange module loaded successfully")
 except ImportError as e:
