@@ -18,8 +18,9 @@ The frontend proxies `/api/*` to your backend. Deploy the backend first and note
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
    - **Plan:** Free
-5. **Environment** (optional): add `OPENAI_API_KEY`, `CORS_ORIGINS` = `https://your-vercel-app.vercel.app` (add after frontend is deployed).
-6. Deploy. Copy the service URL (e.g. `https://aurashop-api.onrender.com`).
+5. **Python version:** The repo has `backend/.python-version` set to `3.11` so Render uses Python 3.11 (avoids Python 3.13 build failures with pydantic-core). Alternatively in Render **Environment** set `PYTHON_VERSION` = `3.11.11`.
+6. **Environment** (optional): add `OPENAI_API_KEY`, `CORS_ORIGINS` = `https://your-vercel-app.vercel.app` (add after frontend is deployed).
+7. Deploy. Copy the service URL (e.g. `https://aurashop-api.onrender.com`).
 
 ### Option B: Railway
 
