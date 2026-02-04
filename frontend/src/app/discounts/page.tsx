@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/app/providers";
+import { useAuth, useCart } from "@/app/providers";
 import { playCouponGame, playScratch } from "@/lib/api";
 import { HomeSpinWheel } from "@/components/HomeSpinWheel";
 import { HomeScratch } from "@/components/HomeScratch";
@@ -37,7 +37,8 @@ type Coupon = {
 };
 
 export default function DiscountsPage() {
-  const { user, sessionId } = useAuth();
+  const { user } = useAuth();
+  const { sessionId } = useCart();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [personalized, setPersonalized] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);

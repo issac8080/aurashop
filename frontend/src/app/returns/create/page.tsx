@@ -269,7 +269,7 @@ export default function CreateReturnPage() {
         <Card>
           <CardHeader>
             <CardTitle>Issue Type</CardTitle>
-            <CardDescription>Select the type of issue you're experiencing</CardDescription>
+            <CardDescription>Select the type of issue you&apos;re experiencing</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -316,7 +316,7 @@ export default function CreateReturnPage() {
         <Card>
           <CardHeader>
             <CardTitle>Contact Information</CardTitle>
-            <CardDescription>We'll use this to send you updates about your return</CardDescription>
+            <CardDescription>We&apos;ll use this to send you updates about your return</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>

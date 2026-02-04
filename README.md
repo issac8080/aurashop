@@ -100,6 +100,16 @@ App: `http://localhost:3000`. The app uses Next.js rewrites so `/api/*` is proxi
 
 No env vars are required in the frontend for the default setup.
 
+## Deploy on Vercel
+
+To fix **404 NOT_FOUND** on Vercel:
+
+1. **Vercel Dashboard** → Your project → **Settings** → **General**.
+2. Under **Root Directory** click **Edit**, enter **`frontend`**, then **Save**.
+3. **Deployments** → **⋯** on the latest deployment → **Redeploy**.
+
+The Next.js app lives in the `frontend/` folder. If Root Directory is left blank, Vercel builds from the repo root and returns 404. Full steps (including deploying the backend): see **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)**.
+
 ## API Overview
 
 | Method | Endpoint              | Description                    |

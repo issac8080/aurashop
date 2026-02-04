@@ -156,7 +156,7 @@ export default function StoreScannerPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Scan the QR code or manually enter the Order ID shown on customer's phone
+                Scan the QR code or manually enter the Order ID shown on customer&apos;s phone
               </p>
             </div>
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Star, ShoppingCart, ArrowLeft, Sparkles, Share2, Heart, Eye, Truck, ShieldCheck } from "lucide-react";
+import { Star, ShoppingCart, ArrowLeft, Sparkles, Share2, Heart, Eye, Truck, ShieldCheck, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProductCard } from "@/components/ProductCard";

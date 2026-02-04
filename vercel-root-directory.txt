@@ -1,0 +1,9 @@
+VERCEL: Set Root Directory to "frontend"
+=========================================
+To fix 404 NOT_FOUND:
+1. Vercel Dashboard → Your Project → Settings → General
+2. Under "Root Directory" click Edit
+3. Enter: frontend
+4. Save → Redeploy (Deployments → ... → Redeploy)
+
+The Next.js app lives in the frontend/ folder. If Root Directory is left blank, Vercel builds from the repo root and returns 404.
