@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -34,7 +34,7 @@ const damageTypes: { value: DamageType; label: string; description: string }[] =
   { value: "OTHER", label: "Other", description: "Other issues" },
 ];
 
-export default function CreateReturnPage() {
+function CreateReturnPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
@@ -418,5 +418,13 @@ export default function CreateReturnPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function CreateReturnPage() {
+  return (
+    <Suspense fallback={<div className="container max-w-2xl py-8"><div className="h-8 w-48 bg-muted animate-pulse rounded mb-6" /><div className="h-64 bg-muted animate-pulse rounded-xl" /></div>}>
+      <CreateReturnPageContent />
+    </Suspense>
   );
 }

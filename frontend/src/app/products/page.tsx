@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -12,7 +12,7 @@ import { useCart, useAuth } from "@/app/providers";
 import { fetchProducts, fetchCategories, fetchRecommendations, trackEvent } from "@/lib/api";
 import type { Product } from "@/lib/api";
 
-export default function ProductsPage() {
+function ProductsPageContent() {
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get("category") ?? "";
   const { sessionId, refreshCart } = useCart();
@@ -357,5 +357,13 @@ export default function ProductsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<div className="py-8"><div className="h-10 w-48 bg-muted animate-pulse rounded mb-6" /><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">{[...Array(8)].map((_, i) => <div key={i} className="h-72 rounded-xl bg-muted animate-pulse" />)}</div></div>}>
+      <ProductsPageContent />
+    </Suspense>
   );
 }
