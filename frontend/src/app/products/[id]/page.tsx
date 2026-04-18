@@ -208,7 +208,7 @@ export default function ProductDetailPage() {
               </div>
 
               <div className="mb-8">
-                <p className="font-heading text-4xl font-bold text-gray-900 dark:text-white flex flex-wrap items-baseline gap-2">
+                <p className="font-heading text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white flex flex-wrap items-baseline gap-2">
                   {formatPrice(product.price)}
                   {product.compare_at_price != null && product.compare_at_price > product.price ? (
                     <>
@@ -257,24 +257,24 @@ export default function ProductDetailPage() {
               </div>
 
               <div className="mt-auto space-y-4">
-                <div className="flex gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <Button
                     size="lg"
-                    className="flex-1 rounded-full h-14 text-base font-bold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                    className="w-full sm:flex-1 rounded-full h-12 sm:h-14 text-base font-bold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all touch-manipulation"
                     onClick={() => handleAddToCart(product.id)}
                   >
                     <ShoppingCart className="h-5 w-5 mr-2" />
                     Add to Cart
                   </Button>
-                  <Button size="lg" variant="outline" className="rounded-full h-14 px-6 border-2 font-bold">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto sm:flex-1 rounded-full h-12 sm:h-14 px-6 border-2 font-bold touch-manipulation">
                     Buy Now
                   </Button>
                 </div>
                 
-                <div className="flex items-center justify-center gap-6 text-xs font-medium text-muted-foreground">
-                  <span className="flex items-center gap-1.5"><Truck className="h-4 w-4" /> Free Delivery</span>
-                  <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4" /> 1 Year Warranty</span>
-                  <span className="flex items-center gap-1.5"><RotateCcw className="h-4 w-4" /> 7 Day Returns</span>
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-medium text-muted-foreground text-center">
+                  <span className="inline-flex items-center gap-1.5"><Truck className="h-4 w-4 shrink-0" /> Free Delivery</span>
+                  <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 shrink-0" /> 1 Year Warranty</span>
+                  <span className="inline-flex items-center gap-1.5"><RotateCcw className="h-4 w-4 shrink-0" /> 7 Day Returns</span>
                 </div>
               </div>
             </div>

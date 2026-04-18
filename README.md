@@ -1,87 +1,268 @@
-# AuraShop – AI-Powered Personalized Shopping Assistant
+<div align="center">
 
-A full-stack, hackathon-ready prototype that delivers **real-time AI product recommendations** based on user behavior, preferences, browsing history, and intent. Built for e-commerce and omnichannel environments.
+# AuraShop
 
-**Quick start:** Run the **backend first** (port 8000), then the frontend. If the backend is not running, the frontend still loads with fallback product data and shows a banner with the start command.
+### AI-Powered Personalized Shopping Assistant
 
-## ✨ Features
+**Full-stack e-commerce prototype** with real-time recommendations, streaming AI chat, wallet & rewards, store pickup with QR, returns pipeline, and a **G10X-inspired** glassmorphism UI.
 
-- **🔍 Smart Search** – Real-time product search across name, description, category, tags, and brand with dedicated search page.
-- **🏪 In-Store Pickup with QR Code** – Customers can choose store pickup, receive unique QR code, and scan at store for instant verification and pickup.
-- **👤 Profile & Order Management** – User profiles with order history, contact info, saved addresses, and order tracking.
-- **📦 Order Tracking** – Real-time order status updates (Pending → Confirmed → Ready for Pickup/Out for Delivery → Picked Up/Delivered).
-- **💰 Aura Wallet** – AuraPoints rewards system: earn 5-7% on every purchase, valid for 30 days, automatic credit after order completion.
-- **🤖 Intelligent AI Assistant** – Enhanced chatbot with deep product knowledge, personalization, comparison capabilities, and contextual recommendations. Understands complex queries like "best phone under 30k" or "formal wear for interview".
-- **✨ Beautiful Modern UI** – Stunning gradient hero with Unsplash backgrounds, glass-morphism effects, smooth animations, and premium design throughout.
-- **🖼️ Unsplash Integration** – High-quality, category-specific images for all products and dynamic hero backgrounds.
-- **🎯 AI Recommendation Engine** – Ranks products using user preferences, session behavior, cart contents, and budget signals (OpenAI + rule-based fallback).
-- **💬 Enhanced Chat Experience** – Natural language queries, product suggestions, budget-aware alternatives, inline product cards, 6 suggested prompts, emoji support, and gradient UI.
-- **📊 Session-based Tracking** – Page views, product clicks, search queries, cart add/remove, time spent, budget signals, category affinity.
-- **🎨 Personalized UI** – "Recommended for You" and "Trending" carousels, AI badges (Best Match, Value for Money, Trending), top picks on product listing, "Why this product is right for you" and similar products on detail, upsell/cross-sell on cart.
-- **📱 Fully Responsive** – Desktop and mobile optimized with Tailwind CSS, modern components, and smooth transitions.
-- **🔄 Graceful Degradation** – Works offline with fallback product data when backend is down, shows helpful banner with start instructions.
+[![Stack](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs)](https://nextjs.org/)
+[![Stack](https://img.shields.io/badge/FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Stack](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python)](https://www.python.org/)
+[![Stack](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss)](https://tailwindcss.com/)
 
-## Tech Stack
+[Features](#-feature-overview) · [Architecture](#-architecture) · [Setup](#-quick-start) · [API](#-api-reference) · [Deploy](#-deployment)
 
-| Layer        | Stack                          |
-|-------------|---------------------------------|
-| Frontend    | Next.js 14, React, Tailwind, ShadCN-style UI, Framer Motion, Unsplash |
-| Backend     | Python, FastAPI                 |
-| AI          | OpenAI API (gpt-4o-mini), prompt-engineered recommendations & chat |
-| Data        | In-memory store, synthetic product catalog (JSON) |
+</div>
 
-## Project Structure
+---
+
+## Table of contents
+
+1. [Overview](#overview)
+2. [Feature overview](#-feature-overview)
+3. [Architecture](#-architecture)
+4. [Tech stack](#-tech-stack)
+5. [Repository layout](#-repository-layout)
+6. [Quick start](#-quick-start)
+7. [Environment variables](#-environment-variables)
+8. [API reference](#-api-reference)
+9. [Frontend highlights](#-frontend-highlights)
+10. [Performance](#-performance--production-notes)
+11. [Testing](#-testing)
+12. [Troubleshooting](#-troubleshooting)
+13. [Additional documentation](#-additional-documentation)
+14. [License](#license)
+
+---
+
+## Overview
+
+AuraShop demonstrates an **omnichannel retail experience**: browse a catalog with AI-ranked picks, talk to **Aura AI** (streaming replies + product cards), manage a session cart, checkout with **home delivery or store pickup**, track orders with **QR codes**, use **AuraPoints / wallet**, play **discount mini-games**, and file **returns** backed by an optional AI-assisted workflow.
+
+The **Next.js** app proxies `/api/*` to a **FastAPI** backend (`API_URL`, default `http://localhost:8000`). If the API is down, the UI degrades gracefully with **fallback catalog data** and a **backend offline** banner.
+
+---
+
+## Feature overview
+
+| Area | What you get |
+|------|----------------|
+| **Catalog & search** | Category filters, price/rating filters, dedicated search page, grocery vs general **store mode** |
+| **Home experience** | Hero carousel, quick category chips, “Picked for you”, shop-by-category grid, offers strip, games entry |
+| **AI recommendations** | Session + behavior signals, OpenAI-powered ranking with rule-based fallback, “Top picks” on listing |
+| **Aura AI chat** | Streaming responses, proactive hints, inline product cards, suggested prompts, cart/checkout awareness |
+| **Cart & checkout** | Coupons (validate against `/coupons`), spin/scratch games, order summary, delivery vs **store pickup**, AuraPoints |
+| **Orders** | Status lifecycle, QR for pickup, post-order spin / cashback hooks |
+| **Wallet** | Balance, transactions, cashback preview, top-up placeholder |
+| **Profile & auth** | Local profile demo; OTP endpoints for auth flows |
+| **Discounts** | Discounts listing, coupon validation, games (spin, jackpot, scratch) |
+| **Returns** | Create return, tracking; SQLAlchemy module with vision/policy agents (when deps available) |
+| **Store staff** | `/store-scanner` flow to verify QR and complete pickup |
+| **UX / brand** | G10X palette (dark red, logo red, orange), glass headers, responsive layout, safe-area aware chrome |
+| **Shopping vibe** | Optional ambient “shopping music” modes (Chill / Energetic / Calm) |
+
+---
+
+## Architecture
+
+### System context
+
+High-level view of how the browser, Next.js app, API, and external services relate.
+
+```mermaid
+flowchart TB
+  subgraph Client["Browser / mobile"]
+    UI[Next.js App Router UI]
+    SW[Service Worker N/A]
+  end
+
+  subgraph Edge["Host e.g. Vercel"]
+    NX[Next.js server + static assets]
+  end
+
+  subgraph API["Backend"]
+    FA[FastAPI]
+    MEM[(In-memory sessions / events / cart)]
+    SQL[(SQLite returns DB)]
+    RAG[(Chroma optional RAG)]
+  end
+
+  subgraph External["External"]
+    OAI[OpenAI API]
+    IMG[Image CDNs e.g. Unsplash / Picsum]
+  end
+
+  UI -->|"/api/* rewrite"| FA
+  NX --> UI
+  FA --> MEM
+  FA --> SQL
+  FA --> RAG
+  FA --> OAI
+  UI --> IMG
+```
+
+### Request path (example: product + recommendations)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant N as Next.js
+  participant F as FastAPI
+  participant AI as OpenAI
+
+  U->>N: Load /products
+  N->>F: GET /api/products
+  F-->>N: JSON catalog
+  N-->>U: Render page
+
+  U->>N: Open Aura AI
+  N->>F: POST /api/chat/stream
+  F->>AI: Stream completion
+  AI-->>F: Tokens
+  F-->>N: SSE / chunked stream
+  N-->>U: Live assistant message
+```
+
+### Frontend module map
+
+```mermaid
+flowchart LR
+  subgraph App["app/"]
+    L[layout.tsx]
+    P[pages: home, products, cart, ...]
+  end
+
+  subgraph Cross["Cross-cutting"]
+    PR[providers.tsx]
+    H[Header]
+    CW[ChatWidget dynamic]
+  end
+
+  subgraph Lib["lib/"]
+    API[api.ts]
+    SE[session.ts]
+  end
+
+  L --> PR
+  PR --> H
+  PR --> P
+  PR --> CW
+  P --> API
+  API -->|fetch /api| B[(Backend)]
+```
+
+### Backend service map (conceptual)
+
+```mermaid
+flowchart TB
+  MAIN[main.py routes]
+  MAIN --> DS[data_store.py]
+  MAIN --> AI[ai_service.py]
+  MAIN --> ORD[order_service.py]
+  MAIN --> WAL[wallet_service.py]
+  MAIN --> CP[coupon_service.py]
+  MAIN --> CG[coupon_game.py]
+  MAIN --> PRO[proactive_service.py]
+  MAIN --> RET[returns/routes.py]
+  AI --> OAI[OpenAI]
+  AI --> RAG[rag_store / Chroma optional]
+```
+
+---
+
+## Tech stack
+
+| Layer | Technologies |
+|--------|----------------|
+| **Frontend** | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS 3, Radix UI primitives, Framer Motion, Lucide icons, `next/font` (Manrope) |
+| **Backend** | Python, FastAPI, Pydantic v2, Uvicorn |
+| **AI** | OpenAI API (`gpt-4o-mini` style flows in `ai_service.py`), optional RAG with Chroma + sentence-transformers |
+| **Returns module** | SQLAlchemy, SQLite, LangGraph / LangChain (optional agent pipeline) |
+| **Data** | JSON product catalog, in-memory sessions/events; optional Kaggle import scripts |
+| **E2E** | Playwright (`frontend/e2e/`) |
+
+---
+
+## Repository layout
 
 ```
 AuraShop/
-├── backend/                 # FastAPI app
+├── backend/
 │   ├── app/
-│   │   ├── main.py          # REST + events + recommendations + chat
-│   │   ├── models.py        # Pydantic models
-│   │   ├── data_store.py    # In-memory sessions, events, cart, cache
-│   │   ├── ai_service.py    # Enhanced AI: recommendations + smart chat
-│   │   └── config.py        # Env (OPENAI_API_KEY, CORS)
-│   └── data/
-│       └── products.json    # Synthetic catalog
-├── frontend/                # Next.js app
-│   └── src/
-│       ├── app/             # Pages: home, products, product/[id], cart, search
-│       ├── components/      # Header with search, ProductCard with Unsplash, 
-│       │                    # ProductCarousel, ChatWidget (enhanced), BackendOfflineBanner
-│       └── lib/             # api.ts (with fallbacks), session.ts, utils, unsplash.ts
-└── README.md
+│   │   ├── main.py              # FastAPI app, routes, CORS, lifespan
+│   │   ├── config.py            # OPENAI_API_KEY, CORS_ORIGINS, USE_BUILTIN_CHAT
+│   │   ├── models.py            # Pydantic request/response models
+│   │   ├── data_store.py        # Products, sessions, cart, events
+│   │   ├── ai_service.py        # Recommendations + chat (+ stream)
+│   │   ├── order_service.py     # Orders, stores, pickup QR, profile helpers
+│   │   ├── wallet_service.py    # AuraPoints, cashback, transactions
+│   │   ├── coupon_service.py    # Coupon validation
+│   │   ├── coupon_game.py       # Spin / jackpot / scratch
+│   │   ├── proactive_service.py # Proactive chat hints
+│   │   ├── analytics_service.py
+│   │   ├── behavior_signals.py / price_signals.py / user_preferences.py
+│   │   ├── auth_otp.py
+│   │   ├── returns/             # Return & exchange submodule
+│   │   │   ├── routes.py
+│   │   │   ├── db.py / db_models.py
+│   │   │   └── services/        # Vision, policy, resolution agents, workflow
+│   │   └── ...
+│   ├── data/                    # products.json, orders, etc. (as used by app)
+│   ├── scripts/                 # Seed, Kaggle, image fixes
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── app/                 # App Router pages + layout + providers
+│   │   ├── components/          # Header, ChatWidget, ProductCard, home, UI kit
+│   │   ├── context/             # Store mode, shopping vibe
+│   │   ├── hooks/
+│   │   ├── lib/                 # api.ts, session, unsplash, wishlist, ...
+│   │   └── services/            # productService (client catalog helpers)
+│   ├── next.config.js           # rewrites to API_URL, image remotePatterns, optimizePackageImports
+│   ├── tailwind.config.ts
+│   └── e2e/
+├── README.md                    # This file
+├── README_KAGGLE_INTEGRATION.md
+├── VERCEL_DEPLOYMENT.md         # If present: deploy notes
+└── ENHANCEMENTS.md / NEW_FEATURES.md / ...  # Legacy deep-dives
 ```
 
-## Setup
+---
 
-**Run the backend first.** The frontend proxies `/api/*` to `http://localhost:8000`. If nothing is listening on port 8000, you'll see connection errors until the backend is started. The frontend will still show products using fallback data and a "Backend not running" banner.
+## Quick start
 
-### 1. Backend (Python) — start this first
+### Prerequisites
+
+- **Node.js 18+** and npm  
+- **Python 3.11+**  
+- **OpenAI API key** (recommended for full AI; optional fallback modes exist)
+
+### 1. Backend (run first)
 
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
+
+# Windows
 .venv\Scripts\activate
-# macOS/Linux:
+# macOS / Linux
 # source .venv/bin/activate
 
 pip install -r requirements.txt
-# requirements.txt includes chromadb + numpy for RAG (semantic product search + FAQ). Optional: works without them using keyword-only recommend and fallback FAQ.
 copy .env.example .env   # Windows
 # cp .env.example .env   # macOS/Linux
-# Edit .env and set: OPENAI_API_KEY=sk-your-openai-key
+# Edit .env: OPENAI_API_KEY=sk-...
 ```
-
-Run the API:
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API base: `http://localhost:8000`. Docs: `http://localhost:8000/docs`.
+- **API:** `http://localhost:8000`  
+- **OpenAPI docs:** `http://localhost:8000/docs`
 
-### 2. Frontend (Next.js)
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -89,167 +270,164 @@ npm install
 npm run dev
 ```
 
-App: `http://localhost:3000`. The app uses Next.js rewrites so `/api/*` is proxied to `http://localhost:8000/*`.
+- **App:** `http://localhost:3000`  
+- Browser calls **`/api/...`**; Next.js **rewrites** to `API_URL` (see `next.config.js`).
 
-### 3. Environment
+### 3. Production build (frontend)
 
-**Backend** (`backend/.env`):
+```bash
+cd frontend
+npm run build
+npm start
+```
 
-- `OPENAI_API_KEY` – Your OpenAI API key (required for AI recommendations and chat).
-- `CORS_ORIGINS` – Default `http://localhost:3000`.
+---
 
-No env vars are required in the frontend for the default setup.
+## Environment variables
 
-## Deploy on Vercel
+### Backend (`backend/.env`)
 
-To fix **404 NOT_FOUND** on Vercel:
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | OpenAI key for recommendations + chat |
+| `USE_BUILTIN_CHAT` | Set `1` / `true` to force built-in chat (no OpenAI) |
+| `CORS_ORIGINS` | Comma-separated origins (default `http://localhost:3000`) |
 
-1. **Vercel Dashboard** → Your project → **Settings** → **General**.
-2. Under **Root Directory** click **Edit**, enter **`frontend`**, then **Save**.
-3. **Deployments** → **⋯** on the latest deployment → **Redeploy**.
+### Frontend (optional)
 
-The Next.js app lives in the `frontend/` folder. If Root Directory is left blank, Vercel builds from the repo root and returns 404. Full steps (including deploying the backend): see **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)**.
+| Variable | Purpose |
+|----------|---------|
+| `API_URL` | Used by **Next.js rewrites** in `next.config.js` (default `http://localhost:8000`) |
 
-## API Overview
+Set `API_URL` in production to your deployed API origin.
 
-| Method | Endpoint              | Description                    |
-|--------|------------------------|--------------------------------|
-| GET    | `/products`            | List products (filters: category, price, rating, color) |
-| GET    | `/products/{id}`       | Product detail                 |
-| POST   | `/events`              | Track behavior (page_view, product_click, search, cart_add, cart_remove, etc.) |
-| POST   | `/recommendations`     | Get AI recommendations (query: session_id, limit, max_price, category, exclude_product_ids) |
-| POST   | `/chat`                | Enhanced AI chat (body: session_id, message, history) |
-| GET    | `/session/{id}/cart`   | Get cart for session           |
-| GET    | `/stores`              | Get available stores for pickup |
-| POST   | `/orders`              | Create order (home delivery or store pickup) |
-| GET    | `/orders/{id}`         | Get order details with QR code |
-| GET    | `/users/{id}/orders`   | Get all orders for user        |
-| POST   | `/pickup/verify`       | Verify QR code for store pickup |
-| POST   | `/pickup/complete/{id}`| Mark order as picked up        |
-| GET    | `/users/{id}/profile`  | Get user profile               |
-| POST   | `/users/{id}/profile`  | Create/update user profile     |
-| GET    | `/users/{id}/wallet`   | Get Aura Wallet details        |
-| GET    | `/users/{id}/wallet/transactions` | Get wallet transaction history |
-| GET    | `/wallet/preview-cashback` | Preview cashback for order total |
+---
 
-## 🎨 Demo Flow
+## API reference
 
-1. **Home** – Open `http://localhost:3000`. See stunning hero with Unsplash background, gradient overlays, animated badges, "✨ Recommended for You" and "🔥 Trending Now" carousels with AI badges.
+Base URL is the backend host; the frontend uses the **same origin** with path `/api` rewritten.
 
-2. **Search** – Use the search bar in header (desktop) or below logo (mobile). Try: "shirt", "electronics", "casual", "formal". See instant filtered results with Unsplash images.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/categories` | Product categories |
+| GET | `/products` | List products (filters: category, price, rating, color, limit) |
+| GET | `/products/{id}` | Product detail |
+| GET | `/products/{id}/availability` | Store / online availability |
+| POST | `/events` | Analytics & cart sync events |
+| GET | `/recommendations` | AI recommendations |
+| GET | `/chat/proactive` | Proactive hints for chat |
+| POST | `/chat` | AI chat (JSON) |
+| POST | `/chat/stream` | Streaming AI chat |
+| POST | `/auth/send-otp` | OTP send |
+| POST | `/auth/verify-otp` | OTP verify |
+| POST | `/home/coupon-game` | Spin-style coupon game |
+| POST | `/home/jackpot` | Jackpot game |
+| POST | `/home/scratch` | Scratch game |
+| GET | `/coupons/validate` | Validate coupon for checkout |
+| GET | `/session/{id}/context` | Session context for AI |
+| GET | `/session/{id}/cart` | Get cart |
+| POST | `/session/{id}/cart/clear` | Clear cart |
+| GET | `/discounts` | Discounts / coupons listing |
+| GET | `/stores` | Pickup stores |
+| POST | `/orders` | Place order |
+| GET | `/orders/{id}` | Order detail + QR data |
+| GET | `/users/{id}/orders` | User orders |
+| POST | `/orders/{id}/status` | Update status (admin/demo) |
+| POST | `/orders/{id}/cancel` | Cancel order |
+| POST | `/pickup/verify` | Verify pickup QR |
+| POST | `/pickup/complete/{id}` | Complete pickup |
+| GET/POST | `/users/{id}/profile` | Profile |
+| GET | `/users/{id}/wallet` | Wallet summary |
+| GET | `/users/{id}/wallet/transactions` | Transactions |
+| POST | `/orders/{id}/spin` | Post-order spin |
+| POST | `/orders/{id}/cashback` | Cashback credit |
+| POST | `/orders/apply-wallet` | Apply AuraPoints to order |
+| GET | `/wallet/preview-cashback` | Cashback preview |
+| POST | `/wallet/add-money` | Wallet top-up (demo) |
+| * | `/returns/*` | Return & exchange APIs (see `returns/routes.py`) |
 
-3. **Smart AI Chat** – Click the gradient floating chat button (bottom-right, with green pulse indicator). Try complex queries:
-   - "Find me something under ₹2000"
-   - "Best casual wear for office"
-   - "Compare top-rated electronics"
-   - "Gift ideas for tech lover"
-   - "Outfit for party under ₹5000"
-   - "Show trending products"
-   
-   See inline product cards, personalized reasoning with emojis (✨, 🎯, 💡), and 6 suggested prompts.
+> Full schemas: Open **`/docs`** on the running API.
 
-4. **Products** – Go to Products page. Use smart filters (category, price range, rating). See "Top picks based on your browsing" banner if you have session history. All products show high-quality Unsplash images.
+---
 
-5. **Product Detail** – Click any product. See large Unsplash image with hover zoom, "Why this product is right for you" section with personalized insights, and "Similar & alternatives" recommendations.
+## Frontend highlights
 
-6. **Cart** – Add items (cart badge pulses), go to Cart. See order summary, "People like you also bought" upsells with Unsplash images. Remove items and see real-time cart update.
+| Topic | Details |
+|--------|---------|
+| **Routing** | App Router: `/`, `/products`, `/products/[id]`, `/search`, `/cart`, `/checkout`, `/discounts`, `/wallet`, `/profile`, `/login`, `/orders/[id]`, `/returns/*`, `/store-scanner`, `/invite/[code]`, … |
+| **State** | React context: auth + cart session, store mode (groceries vs general), shopping vibe audio |
+| **API client** | `src/lib/api.ts` — fetch helpers with offline fallbacks where implemented |
+| **Design system** | CSS variables in `globals.css` (light/dark), Tailwind `brand.*`, glass utilities (`.g10x-header-glass`, `.glass-card`) |
+| **Chat** | `ChatWidget` loaded dynamically in production builds to reduce initial JS |
+| **Images** | Remote patterns for Unsplash / Picsum in `next.config.js`; many components use optimized `<img>` patterns (see ESLint hints for gradual `next/image` migration) |
 
-7. **Checkout** – Click "Proceed to checkout". Choose between:
-   - **Home Delivery**: Enter address, place order
-   - **Store Pickup**: Select store location, place order, receive QR code
+---
 
-8. **Order Detail** – After placing order, see:
-   - Order status with icon badges
-   - QR code (for store pickup) - large, scannable, with alphanumeric code
-   - Order items and total
-   - Delivery/pickup information
+## Performance & production notes
 
-9. **Profile & Orders** – Click profile icon in header:
-   - View/edit personal information
-   - See all orders with status badges
-   - Click any order to view details and QR code
-   - Quick stats (total orders, completed)
+- **Code splitting:** Aura AI chat bundle and home view are loaded with `next/dynamic` where configured; `optimizePackageImports` trims **lucide-react** and **framer-motion** imports.
+- **Cart fetch** may be deferred slightly after first paint (`requestIdleCallback`) so hydration stays responsive.
+- **Slow TTFB or `/api` latency** usually indicates **backend region, cold starts, or DB** — profile the API independently of the UI.
+- **Vercel:** Set project **Root Directory** to `frontend` if the repo root is not the Next app (see existing deploy doc).
 
-10. **Store Scanner** (Staff Only) – Visit `/store-scanner`:
-    - Enter/scan QR code
-    - Verify order details
-    - Complete pickup with one click
-    - See confirmation animation
+---
 
-## Success Metrics (for judging)
+## Testing
 
-- **Reduced search time** – Smart search + AI chat surface relevant products in seconds.
-- **Higher click-through** – Stunning Unsplash images, AI badges, and "top picks" drive engagement.
-- **Better recommendations** – Enhanced AI understands complex queries and user context.
-- **Cart completion** – Personalized upsells, low-stock nudges, and smooth UX increase conversions.
-- **Explainability** – "Why this product is right for you" and recommendation reasons build trust.
-- **Visual appeal** – Modern gradient design, glass effects, and professional imagery create premium feel.
+```bash
+cd frontend
+npm run test:e2e
+```
 
-## 🚀 New Features Added
+Uses Playwright (`playwright.config.ts`, `e2e/full-app.spec.ts`). Install browsers if prompted (`npx playwright install`).
 
-### Search Functionality
-- Header search bar (responsive: desktop + mobile)
-- Dedicated `/search` page with real-time filtering
-- Searches across: name, description, category, tags, brand
-- Empty state with helpful message
-
-### Enhanced AI Chatbot
-- **Smarter prompts**: Deep product knowledge, comparison capabilities, complex query understanding
-- **Better personality**: Warm, knowledgeable, uses emojis sparingly (✨, 🎯, 💡)
-- **6 suggested prompts**: Including "Gift ideas", "Compare products", "Outfit suggestions"
-- **Enhanced UI**: Gradient header, online indicator with pulse, larger chat window
-- **Contextual responses**: References browsing history, cart items, budget constraints
-
-### Beautiful UI Improvements
-- **Gradient hero**: Stunning purple gradient overlay on Unsplash background
-- **Glass-morphism**: Backdrop blur effects on badges and chat
-- **Unsplash images**: Category-specific high-quality images for all products
-- **Smooth animations**: Framer Motion for hero, products, and interactions
-- **Enhanced header**: Gradient logo, search integration, pulsing cart badge
-- **Better colors**: Refined color palette with subtle background gradients
-- **Premium feel**: Shadow effects, rounded corners, smooth transitions
-
-## 📚 Additional Documentation
-
-- **`ENHANCEMENTS.md`** - Detailed breakdown of search, AI improvements, and UI enhancements
-- **`NEW_FEATURES.md`** - Complete guide to store pickup, profile, and order management
-- **`STORE_PICKUP_GUIDE.md`** - Technical documentation for QR pickup system
-- **`DEMO_GUIDE.md`** - Step-by-step presentation guide for hackathon judges
-
-## 🎯 Hackathon Readiness
-
-This project is **100% demo-ready** with:
-- ✅ Complete feature set (browse, search, chat, cart, checkout, orders, profile)
-- ✅ Innovative QR pickup system
-- ✅ Beautiful, modern UI with Unsplash images
-- ✅ Smart AI assistant with OpenAI
-- ✅ Responsive design (mobile + desktop)
-- ✅ Error handling and fallbacks
-- ✅ Comprehensive documentation
-- ✅ Clear demo flow and talking points
+---
 
 ## Troubleshooting
 
-### `ECONNRESET` / "Failed to proxy http://localhost:8000/..."
+### `ECONNRESET` / failed proxy to `localhost:8000`
 
-The frontend proxies `/api/*` to the backend. This error means **the backend is not running** or the connection was reset.
-
-**Fix:** Start the backend first in a separate terminal:
+The backend is not running or refused the connection. Start:
 
 ```bash
 cd backend
 .venv\Scripts\activate   # Windows
-# source .venv/bin/activate  # macOS/Linux
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Keep this running, then use the frontend at `http://localhost:3000`. The app will show a "Backend not running" banner until the backend is up.
+### Backend banner: “Backend not running”
 
-### "upstream image response failed" (503)
+Same as above; the UI still loads with **fallback data** when possible.
 
-Product and hero images use **Picsum Photos** (no API key, reliable). If you see 503 from an image URL, it’s usually temporary; refresh the page. Unsplash Source was deprecated and is no longer used.
+### Returns module failed to load
+
+Check console on API startup. The app catches import errors and may run without the returns router; verify SQLAlchemy / optional ML deps per `requirements.txt`.
+
+### Image 503 / broken URLs
+
+Transient CDN issues; refresh. For production, prefer stable image hosts and `next/image` where applicable.
+
+---
+
+## Additional documentation
+
+| File | Content |
+|------|---------|
+| `README_KAGGLE_INTEGRATION.md` | Kaggle dataset integration |
+| `VERCEL_DEPLOYMENT.md` | Vercel / full-stack deploy notes (if present) |
+| `ENHANCEMENTS.md`, `NEW_FEATURES.md`, `STORE_PICKUP_GUIDE.md`, `DEMO_GUIDE.md` | Legacy deep-dives referenced in older README sections |
+
+---
 
 ## License
 
-MIT.
+MIT
 
+---
+
+<div align="center">
+
+**Built for demos, hackathons, and extension into production-grade commerce.**
+
+</div>

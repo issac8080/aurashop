@@ -76,9 +76,32 @@ export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const sid = getSessionId();
     setSessionId(sid);
-    getCart(sid)
-      .then(({ cart }) => setCartCount(cart.length))
-      .catch(() => setCartCount(0));
+    let cancelled = false;
+    const loadCartCount = () => {
+      if (cancelled) return;
+      getCart(sid)
+        .then(({ cart }) => {
+          if (!cancelled) setCartCount(cart.length);
+        })
+        .catch(() => {
+          if (!cancelled) setCartCount(0);
+        });
+    };
+    // Defer until after first paint so initial hydration stays light (cart badge updates shortly after).
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(loadCartCount, { timeout: 2000 });
+    } else {
+      timeoutId = setTimeout(loadCartCount, 0);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window !== "undefined") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
   }, []);
 
   return (

@@ -1,8 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
-import { ChatWidget } from "@/components/ChatWidget";
+import { ChatWidgetDynamic } from "@/components/ChatWidgetDynamic";
 import { BackendOfflineBanner } from "@/components/BackendOfflineBanner";
 import { Providers } from "./providers";
 
@@ -18,6 +18,16 @@ export const metadata: Metadata = {
   description: "Personalized product recommendations and real-time AI assistant for e-commerce.",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f3f1" },
+    { media: "(prefers-color-scheme: dark)", color: "#1a1a1a" },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -25,14 +35,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={manrope.variable}>
-      <body className="min-h-screen antialiased font-sans font-light text-foreground">
+      <body className="min-h-screen min-h-[100dvh] antialiased font-sans font-light text-foreground">
         <Providers>
           <BackendOfflineBanner />
           <Header />
-          <main className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl pb-28 sm:pb-24">
+          <main className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl min-w-0 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
             {children}
           </main>
-          <ChatWidget />
+          <ChatWidgetDynamic />
         </Providers>
       </body>
     </html>

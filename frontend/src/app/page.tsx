@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,24 @@ import { fetchProducts, fetchRecommendations, playCouponGame, playJackpot, track
 import { getProductImagePlaceholder } from "@/lib/unsplash";
 import { getProductImage } from "@/lib/product-image";
 import { formatPrice } from "@/lib/utils";
-import { AuraHomeView } from "@/components/home/AuraHomeView";
+
+const AuraHomeView = dynamic(
+  () => import("@/components/home/AuraHomeView").then((m) => ({ default: m.AuraHomeView })),
+  {
+    loading: () => (
+      <div className="w-full space-y-4 py-4 animate-pulse" aria-busy aria-label="Loading storefront">
+        <div className="h-16 rounded-2xl bg-muted" />
+        <div className="h-48 sm:h-56 rounded-2xl bg-muted" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 rounded-xl bg-muted" />
+          ))}
+        </div>
+        <div className="h-64 rounded-2xl bg-muted" />
+      </div>
+    ),
+  }
+);
 
 const PICK_REASONS: { label: string; why: string }[] = [
   { label: "Based on your last purchase", why: "We boost items in categories that match your recent orders when we have signals." },

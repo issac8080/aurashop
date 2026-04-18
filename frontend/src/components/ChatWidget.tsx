@@ -413,7 +413,7 @@ export function ChatWidget() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed bottom-[calc(1rem+3.5rem+0.5rem)] right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[440px] max-w-[calc(100vw-2rem)] h-[min(92vh,720px)] sm:h-[min(90vh,680px)] max-h-[min(90vh,calc(100dvh-8rem))] rounded-2xl border-0 bg-white dark:bg-brand-ink shadow-card-hover flex flex-col overflow-hidden ring-1 ring-black/[0.06] dark:ring-white/10"
+            className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] sm:right-[calc(1.5rem+env(safe-area-inset-right,0px))] z-50 w-[min(440px,calc(100vw-2rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))] sm:w-[440px] max-w-[calc(100vw-2rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px))] h-[min(92vh,720px)] sm:h-[min(90vh,680px)] max-h-[min(90vh,calc(100dvh-8rem-env(safe-area-inset-bottom,0px)))] rounded-2xl border-0 bg-white dark:bg-brand-ink shadow-card-hover flex flex-col overflow-hidden ring-1 ring-black/[0.06] dark:ring-white/10"
           >
             {/* G10X header — fixed height */}
             <div className="relative flex items-center justify-between px-4 py-3 bg-brand-ink text-white shrink-0 min-h-[56px]">
@@ -945,7 +945,7 @@ export function ChatWidget() {
         whileHover={{ scale: 1.06, boxShadow: "0 0 32px -4px rgb(211 7 42 / 0.45)" }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-4 right-4 sm:right-6 z-50 h-14 w-14 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-brand-dark-red via-brand-logo-red to-brand-orange text-white shadow-glow-lg flex items-center justify-center border border-white/25 transition-all duration-200"
+        className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] sm:right-[calc(1.5rem+env(safe-area-inset-right,0px))] z-50 h-14 w-14 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-brand-dark-red via-brand-logo-red to-brand-orange text-white shadow-glow-lg flex items-center justify-center border border-white/25 transition-all duration-200 touch-manipulation"
         aria-label="Open AI assistant"
       >
         <MessageCircle className="h-6 w-6 opacity-95" />

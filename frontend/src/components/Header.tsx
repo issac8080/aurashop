@@ -100,7 +100,7 @@ export function Header() {
             </Button>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-2">
+          <nav className="hidden md:flex items-center gap-2">
             {navLinks.map(({ href, label, icon: Icon }) => {
               const isActive = pathname === href || (href !== "/" && pathname.startsWith(href));
               return (
@@ -187,7 +187,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden h-11 w-11 rounded-xl text-brand-ink/75 dark:text-brand-concrete/90 hover:text-brand-logo-red hover:bg-brand-logo-red/10 transition-all duration-200"
+              className="md:hidden h-11 w-11 rounded-xl text-brand-ink/75 dark:text-brand-concrete/90 hover:text-brand-logo-red hover:bg-brand-logo-red/10 transition-all duration-200"
               onClick={() => setMobileOpen((o) => !o)}
               aria-label={mobileOpen ? "Close menu" : "Open menu"}
             >
@@ -218,7 +218,7 @@ export function Header() {
       </div>
 
       {mobileOpen && (
-        <div className="lg:hidden absolute left-0 right-0 top-full border-t border-brand-concrete/50 dark:border-white/10 bg-brand-concrete-light dark:bg-brand-ink shadow-xl animate-in slide-in-from-top-2 duration-200">
+        <div className="md:hidden absolute left-0 right-0 top-full border-t border-brand-concrete/50 dark:border-white/10 bg-brand-concrete-light dark:bg-brand-ink shadow-xl animate-in slide-in-from-top-2 duration-200 max-h-[min(70vh,calc(100dvh-5rem))] overflow-y-auto overscroll-contain">
           <nav className="container mx-auto px-4 py-5 flex flex-col gap-1 max-w-7xl">
             {navLinks.map(({ href, label, icon: Icon }) => {
               const isActive = pathname === href || (href !== "/" && pathname.startsWith(href));

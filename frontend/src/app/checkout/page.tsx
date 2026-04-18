@@ -301,7 +301,7 @@ export default function CheckoutPage() {
               <CardTitle>Delivery Method</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -422,17 +422,17 @@ export default function CheckoutPage() {
           </Card>
         </div>
 
-        <div>
-          <Card className="sticky top-24">
+        <div className="min-w-0">
+          <Card className="lg:sticky lg:top-20 xl:top-24">
             <CardHeader>
               <CardTitle>Order Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 {cart.map((item) => (
-                  <div key={item.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{item.name}</span>
-                    <span className="font-medium">{formatPrice(item.price)}</span>
+                  <div key={item.id} className="flex justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground min-w-0 text-left [overflow-wrap:anywhere]">{item.name}</span>
+                    <span className="font-medium shrink-0 tabular-nums">{formatPrice(item.price)}</span>
                   </div>
                 ))}
               </div>
