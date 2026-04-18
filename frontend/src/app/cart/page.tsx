@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -32,6 +32,7 @@ import {
   playScratch,
   validateCoupon,
   fetchDiscounts,
+  fetchProducts,
   type DiscountCoupon,
 } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
@@ -43,6 +44,16 @@ import type { Product } from "@/lib/api";
 const AURA_CART_COUPON_KEY = "aura_cart_coupon";
 
 type AppliedCoupon = { code: string; discount: number; title: string };
+
+const FREE_SHIPPING_AT = 999;
+
+function cartLineUrgency(productId: string): string | null {
+  let h = 0;
+  for (let i = 0; i < productId.length; i++) h += productId.charCodeAt(i);
+  if (h % 5 === 0) return "Only 2 left in stock";
+  if (h % 7 === 0) return "Price increased recently on similar items";
+  return null;
+}
 
 function persistCouponForCheckout(coupon: AppliedCoupon) {
   if (typeof window === "undefined") return;
@@ -70,6 +81,9 @@ export default function CartPage() {
   // Discount games (Spin to Win, Lucky Scratch)
   const [gameModal, setGameModal] = useState<"spin" | "scratch" | null>(null);
   const [gameLoading, setGameLoading] = useState<"spin" | "scratch" | null>(null);
+  const [alsoBought, setAlsoBought] = useState<Product[]>([]);
+  const triedBestCouponRef = useRef(false);
+
   const [gameResult, setGameResult] = useState<{
     won: boolean;
     code: string | null;
@@ -107,6 +121,7 @@ export default function CartPage() {
   const total = cart.reduce((sum, p) => sum + p.price, 0);
   const couponDiscount = appliedCoupon?.discount ?? 0;
   const totalAfterCoupon = Math.max(0, total - couponDiscount);
+  const freeShipGap = Math.max(0, FREE_SHIPPING_AT - total);
 
   // Load coupons when Apply Coupon modal opens
   useEffect(() => {
@@ -117,6 +132,67 @@ export default function CartPage() {
     });
     return () => { cancelled = true; };
   }, [applyCouponOpen, userId]);
+
+  useEffect(() => {
+    if (!cart.length) {
+      setAlsoBought([]);
+      return;
+    }
+    const cat = cart[0]?.category;
+    let cancelled = false;
+    fetchProducts({ category: cat || undefined, limit: 16 })
+      .then((res) => {
+        if (cancelled) return;
+        const inCart = new Set(cart.map((p) => p.id));
+        setAlsoBought((res.products || []).filter((p) => !inCart.has(p.id)).slice(0, 4));
+      })
+      .catch(() => {
+        if (!cancelled) setAlsoBought([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cart]);
+
+  useEffect(() => {
+    if (triedBestCouponRef.current || !sessionId || loading || cart.length === 0) return;
+    const params =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const fromUrl = params?.get("bestCoupon") === "1";
+    const fromFlag = typeof window !== "undefined" && sessionStorage.getItem("aurashop_try_best_coupon") === "1";
+    if (!fromUrl && !fromFlag) return;
+    triedBestCouponRef.current = true;
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("aurashop_try_best_coupon");
+      if (fromUrl) window.history.replaceState({}, "", "/cart");
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { coupons: list, personalized } = await fetchDiscounts(userId);
+        const merged = [...personalized, ...list];
+        let best: AppliedCoupon | null = null;
+        let bestAmount = 0;
+        for (const c of merged) {
+          if (c.min_order > total) continue;
+          const r = await validateCoupon(c.code, total, userId);
+          if (r.valid && r.discount > bestAmount) {
+            bestAmount = r.discount;
+            best = { code: c.code, discount: r.discount, title: r.title || c.title || c.code };
+          }
+        }
+        if (!cancelled && best) {
+          setAppliedCoupon(best);
+          persistCouponForCheckout(best);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, loading, cart.length, total, userId]);
 
   const handleApplyCouponByCode = async (code: string) => {
     const raw = (code || couponCodeInput).trim().toUpperCase();
@@ -265,8 +341,10 @@ export default function CartPage() {
     );
   }
 
+  const lineHint = (id: string) => cartLineUrgency(id);
+
   return (
-    <div className="py-6 sm:py-8 lg:py-10 space-y-8 sm:space-y-10">
+    <div className="py-6 sm:py-8 lg:py-10 space-y-8 sm:space-y-10 pb-28 md:pb-10">
       {/* Page header with floating AI assistant */}
       <div className="relative">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -285,9 +363,9 @@ export default function CartPage() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-sky-200 to-cyan-300 dark:from-sky-600 dark:to-cyan-500 flex items-center justify-center shadow-lg border border-white/50"
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-brand-logo-red flex items-center justify-center shadow-lg border border-white/40"
           >
-            <Bot className="h-10 w-10 sm:h-12 sm:w-12 text-sky-700 dark:text-white" />
+            <Bot className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
           </motion.div>
         </div>
       </div>
@@ -300,7 +378,7 @@ export default function CartPage() {
           className="relative overflow-hidden rounded-3xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/50 backdrop-blur-sm shadow-xl"
         >
           <div className="relative p-10 sm:p-14 text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-lg mb-6">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-brand-logo-red text-white shadow-lg mb-6">
               <ShoppingBag className="h-10 w-10" />
             </div>
             <h2 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
@@ -312,7 +390,7 @@ export default function CartPage() {
             <Link href="/products">
               <Button
                 size="lg"
-                className="rounded-xl font-semibold bg-gradient-to-r from-teal-500 to-emerald-600 hover:opacity-90 shadow-lg text-white border-0"
+                className="rounded-xl font-bold bg-brand-logo-red hover:bg-brand-logo-red/90 shadow-lg text-white border-0"
               >
                 <ShoppingCart className="h-5 w-5 mr-2" />
                 Browse products
@@ -345,6 +423,11 @@ export default function CartPage() {
                 </Link>
               </div>
               <div className="p-4 sm:p-5 space-y-4">
+                {freeShipGap > 0 && (
+                  <div className="rounded-xl border border-brand-logo-red/30 bg-brand-logo-red/5 dark:bg-brand-logo-red/10 px-4 py-3 text-sm font-semibold text-brand-dark-red dark:text-brand-concrete-light">
+                    Add {formatPrice(freeShipGap)} more for free shipping on orders over {formatPrice(FREE_SHIPPING_AT)}.
+                  </div>
+                )}
                 {cart.map((item, i) => (
                   <motion.div
                     key={item.id}
@@ -354,7 +437,7 @@ export default function CartPage() {
                     className="group relative flex gap-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 p-4 shadow-sm hover:shadow-md transition-all"
                   >
                     {/* Quantity badge – green border, top left */}
-                    <div className="absolute top-3 left-3 z-10 rounded-md border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <div className="absolute top-3 left-3 z-10 rounded-md border-2 border-brand-logo-red bg-brand-concrete-light dark:bg-brand-dark-red/60 px-2 py-0.5 text-xs font-bold text-brand-dark-red dark:text-brand-concrete-light">
                       1 item
                     </div>
                     <Link
@@ -362,7 +445,7 @@ export default function CartPage() {
                       className="flex-shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 w-20 h-20 sm:w-24 sm:h-24 block"
                     >
                       <img
-                        src={getProductImageSrc(item.image_url, item.category, item.id, item.name)}
+                        src={getProductImageSrc(item.image_url, item.category, item.id, item.name, item.thumbnail_url)}
                         alt={item.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         loading="lazy"
@@ -374,12 +457,17 @@ export default function CartPage() {
                     <div className="flex-1 min-w-0 pt-6 sm:pt-0">
                       <Link
                         href={`/products/${item.id}`}
-                        className="font-semibold text-gray-900 dark:text-white hover:text-teal-600 dark:hover:text-teal-400 line-clamp-2 transition-colors"
+                        className="font-bold text-brand-ink dark:text-brand-concrete-light hover:text-brand-logo-red line-clamp-2 transition-colors"
                       >
                         {item.name}
                       </Link>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{item.category}</p>
-                      <p className="font-bold text-teal-600 dark:text-teal-400 text-lg mt-2">
+                      {lineHint(item.id) && (
+                        <p className="text-xs font-semibold text-brand-logo-red dark:text-brand-concrete-light mt-1">
+                          {lineHint(item.id)}
+                        </p>
+                      )}
+                      <p className="font-bold text-brand-logo-red dark:text-brand-concrete-light text-lg mt-2">
                         {formatPrice(item.price)}
                       </p>
                     </div>
@@ -395,12 +483,43 @@ export default function CartPage() {
                   </motion.div>
                 ))}
               </div>
+              {alsoBought.length > 0 && (
+                <div className="border-t border-gray-100 dark:border-gray-800 p-4 sm:p-5">
+                  <h3 className="font-heading text-sm font-bold text-gray-900 dark:text-white mb-3">
+                    Customers also bought
+                  </h3>
+                  <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+                    {alsoBought.map((p) => (
+                      <Link
+                        key={p.id}
+                        href={`/products/${p.id}`}
+                        className="flex-shrink-0 w-32 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900/50 hover:border-brand-logo-red/50 transition-colors"
+                      >
+                        <div className="aspect-square bg-gray-100 dark:bg-gray-800 relative">
+                          <img
+                            src={getProductImageSrc(p.image_url, p.category, p.id, p.name, p.thumbnail_url)}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.src = getProductImagePlaceholder(p.name);
+                            }}
+                          />
+                        </div>
+                        <div className="p-2">
+                          <p className="text-xs font-semibold line-clamp-2 text-gray-900 dark:text-white">{p.name}</p>
+                          <p className="text-xs font-bold text-brand-logo-red mt-1">{formatPrice(p.price)}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Right panel – Order summary */}
             <div className="md:col-span-1">
               <div className="sticky top-24">
-                <Card className="rounded-2xl border-2 border-teal-200 dark:border-teal-900/50 bg-white/90 dark:bg-gray-900/80 backdrop-blur-sm shadow-xl overflow-hidden">
+                <Card className="rounded-2xl border-2 border-brand-concrete/70 dark:border-white/10 bg-white/90 dark:bg-brand-ink/80 backdrop-blur-sm shadow-xl overflow-hidden">
                   <CardContent className="p-5 sm:p-6">
                     <h2 className="font-heading text-lg font-bold text-gray-900 dark:text-white mb-4">
                       Order summary.
@@ -410,7 +529,7 @@ export default function CartPage() {
                       <span>{formatPrice(total)}</span>
                     </div>
                     {appliedCoupon && (
-                      <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400 mb-1">
+                      <div className="flex justify-between text-sm text-brand-dark-red dark:text-brand-concrete-light mb-1">
                         <span>Discount ({appliedCoupon.code})</span>
                         <span>-{formatPrice(appliedCoupon.discount)}</span>
                       </div>
@@ -418,14 +537,14 @@ export default function CartPage() {
                     <div className="border-t border-gray-200 dark:border-gray-700 my-4 pt-4">
                       <div className="flex justify-between items-baseline">
                         <span className="font-semibold text-gray-900 dark:text-white">Total</span>
-                        <span className="font-heading text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="font-heading text-2xl font-bold text-brand-logo-red dark:text-brand-concrete-light">
                           {formatPrice(totalAfterCoupon)}
                         </span>
                       </div>
                     </div>
                     <Link href="/checkout" className="block mt-5">
                       <Button
-                        className="w-full rounded-xl font-semibold h-12 bg-gradient-to-r from-teal-500 to-emerald-600 hover:opacity-90 shadow-lg text-white border-0"
+                        className="w-full rounded-xl font-bold h-12 sm:h-14 text-base sm:text-lg bg-brand-logo-red hover:bg-brand-logo-red/90 shadow-lg text-white border-0"
                         size="lg"
                       >
                         Proceed to checkout
@@ -445,27 +564,27 @@ export default function CartPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="rounded-3xl border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/80 to-yellow-50/60 dark:from-amber-950/30 dark:to-yellow-950/20 p-6 sm:p-8 shadow-lg"
+            className="rounded-3xl border border-brand-concrete/70 dark:border-white/10 bg-brand-concrete-light/90 dark:bg-brand-ink/70 p-6 sm:p-8 shadow-lg"
           >
-            <h2 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">
+            <h2 className="font-heading text-xl sm:text-2xl font-bold text-brand-dark-red dark:text-brand-concrete-light mb-2 text-center">
               Feeling lucky? You might have coupons waiting!
             </h2>
             {/* Got $ banner with coins and coupon icon */}
             <div className="flex justify-center mb-6">
-              <div className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border border-amber-200 dark:border-amber-700/50 px-6 py-3 shadow-md">
-                <Coins className="h-8 w-8 text-amber-600 dark:text-amber-400" />
-                <span className="font-heading text-2xl font-bold text-amber-800 dark:text-amber-200">
+              <div className="inline-flex items-center gap-2 rounded-2xl bg-white/90 dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30 px-6 py-3 shadow-md">
+                <Coins className="h-8 w-8 text-brand-logo-red dark:text-brand-concrete-light" />
+                <span className="font-heading text-2xl font-bold text-brand-dark-red dark:text-brand-concrete-light">
                   Got $
                 </span>
-                <Ticket className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                <Ticket className="h-8 w-8 text-brand-logo-red dark:text-brand-concrete-light" />
               </div>
             </div>
             <div className="grid sm:grid-cols-3 gap-4 mb-6">
               {/* Apply Coupon card – opens modal, no redirect */}
               <Card className="rounded-2xl border border-gray-200/80 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
                 <CardContent className="p-5 flex flex-col items-center text-center">
-                  <div className="w-14 h-14 rounded-xl bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center mb-3">
-                    <Percent className="h-7 w-7 text-teal-600 dark:text-teal-400" />
+                  <div className="w-14 h-14 rounded-xl bg-brand-logo-red/12 dark:bg-brand-logo-red/20 flex items-center justify-center mb-3">
+                    <Percent className="h-7 w-7 text-brand-logo-red dark:text-brand-concrete-light" />
                   </div>
                   <h3 className="font-heading font-bold text-gray-900 dark:text-white mb-1">Apply Coupon.</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -484,8 +603,8 @@ export default function CartPage() {
               {/* Spin to Win card */}
               <Card className="rounded-2xl border border-gray-200/80 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
                 <CardContent className="p-5 flex flex-col items-center text-center">
-                  <div className="w-14 h-14 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center mb-3">
-                    <Sparkles className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+                  <div className="w-14 h-14 rounded-xl bg-brand-logo-red/12 dark:bg-brand-logo-red/20 flex items-center justify-center mb-3">
+                    <Sparkles className="h-7 w-7 text-brand-logo-red dark:text-brand-concrete-light" />
                   </div>
                   <h3 className="font-heading font-bold text-gray-900 dark:text-white mb-1">Spin to Win.</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -506,8 +625,8 @@ export default function CartPage() {
               {/* Lucky Scratch card – opens scratch game, apply won code on cart */}
               <Card className="rounded-2xl border border-gray-200/80 dark:border-gray-700 bg-white/90 dark:bg-gray-900/70 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
                 <CardContent className="p-5 flex flex-col items-center text-center">
-                  <div className="w-14 h-14 rounded-xl bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center mb-3">
-                    <Ticket className="h-7 w-7 text-orange-600 dark:text-orange-400" />
+                  <div className="w-14 h-14 rounded-xl bg-brand-concrete/50 dark:bg-brand-dark-red/40 flex items-center justify-center mb-3">
+                    <Ticket className="h-7 w-7 text-brand-logo-red dark:text-brand-concrete-light" />
                   </div>
                   <h3 className="font-heading font-bold text-gray-900 dark:text-white mb-1">Lucky Scratch.</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -531,7 +650,7 @@ export default function CartPage() {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="rounded-xl font-semibold border-2 border-amber-300 dark:border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                  className="rounded-xl font-bold border-2 border-brand-logo-red/40 dark:border-brand-logo-red/50 hover:bg-brand-logo-red/10 dark:hover:bg-brand-logo-red/15"
                 >
                   Explore Discounts
                 </Button>
@@ -555,9 +674,9 @@ export default function CartPage() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-200 to-cyan-300 dark:from-sky-600 dark:to-cyan-500 flex items-center justify-center shadow-lg border border-white/50"
+                className="w-16 h-16 rounded-xl bg-brand-logo-red flex items-center justify-center shadow-lg border border-white/40"
               >
-                <Bot className="h-8 w-8 text-sky-700 dark:text-white" />
+                <Bot className="h-8 w-8 text-white" />
               </motion.div>
             </div>
           </div>
@@ -568,7 +687,7 @@ export default function CartPage() {
       <Dialog open={applyCouponOpen} onOpenChange={(open) => { setApplyCouponOpen(open); setCouponError(null); setCouponCodeInput(""); }}>
         <DialogContent className="max-w-md">
           <DialogTitle className="flex items-center gap-2">
-            <Percent className="h-5 w-5 text-teal-500" />
+            <Percent className="h-5 w-5 text-brand-logo-red" />
             Apply Coupon
           </DialogTitle>
           <DialogDescription>
@@ -591,7 +710,7 @@ export default function CartPage() {
                     </div>
                     <Button
                       size="sm"
-                      className="rounded-lg bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                      className="rounded-lg bg-brand-logo-red hover:bg-brand-logo-red/90 text-white shrink-0"
                       onClick={() => handleApplyCouponByCode(c.code)}
                       disabled={couponLoading}
                     >
@@ -613,7 +732,7 @@ export default function CartPage() {
                   className="rounded-xl font-mono"
                 />
                 <Button
-                  className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                  className="rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90 text-white shrink-0"
                   onClick={() => handleApplyCouponByCode("")}
                   disabled={couponLoading}
                 >
@@ -629,6 +748,16 @@ export default function CartPage() {
       </Dialog>
 
       {/* Spin to Win modal – on close apply won code to cart if valid */}
+      {cart.length > 0 && (
+        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+          <Link href="/checkout" className="block">
+            <Button className="w-full h-12 rounded-xl font-bold text-base bg-brand-logo-red hover:bg-brand-logo-red/90 text-white shadow-lg">
+              Checkout · {formatPrice(totalAfterCoupon)}
+            </Button>
+          </Link>
+        </div>
+      )}
+
       <AnimatePresence>
         {gameModal === "spin" && gameResult && (
           <HomeSpinWheel

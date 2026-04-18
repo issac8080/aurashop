@@ -1,35 +1,48 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
-import { useCart } from "@/app/providers";
-import { fetchProducts, trackEvent } from "@/lib/api";
+import { useCart, useAuth } from "@/app/providers";
+import { useCartToast } from "@/components/CartToastProvider";
+import { fetchProducts, trackEvent, type StoreMode } from "@/lib/api";
 import type { Product } from "@/lib/api";
+import { useStoreMode } from "@/context/store-mode-context";
 
 function SearchPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const query = searchParams?.get("q") || "";
+  const { isGroceries, setStoreMode } = useStoreMode();
   const { sessionId, refreshCart } = useCart();
+  const { user } = useAuth();
+  const { showAddedToCart, showAddToCartError } = useCartToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useLayoutEffect(() => {
+    if (searchParams.get("store") === "groceries") {
+      setStoreMode("groceries");
+    }
+  }, [searchParams, setStoreMode]);
 
   useEffect(() => {
     trackEvent({
       event_type: "search",
       session_id: sessionId,
       query,
-      metadata: { page: "search" },
+      metadata: { page: "search", store: isGroceries ? "groceries" : "general" },
     });
-  }, [sessionId, query]);
+  }, [sessionId, query, isGroceries]);
 
   useEffect(() => {
     async function search() {
       setLoading(true);
+      const store: StoreMode = isGroceries ? "groceries" : "general";
       try {
-        const { products: allProducts } = await fetchProducts({ limit: 50 });
+        const { products: allProducts } = await fetchProducts({ store, limit: 500 });
         const lowerQuery = query.toLowerCase();
         const filtered = allProducts.filter(
           (p) =>
@@ -47,11 +60,23 @@ function SearchPageContent() {
       }
     }
     if (query) search();
-  }, [query]);
+  }, [query, isGroceries]);
 
-  const handleAddToCart = (productId: string) => {
-    trackEvent({ event_type: "cart_add", session_id: sessionId, product_id: productId });
-    refreshCart();
+  const handleAddToCart = async (productId: string) => {
+    if (!user) {
+      const from = query ? `/search?q=${encodeURIComponent(query)}` : "/search";
+      router.push("/login?from=" + encodeURIComponent(from));
+      return;
+    }
+    try {
+      await trackEvent({ event_type: "cart_add", session_id: sessionId, product_id: productId });
+      await refreshCart();
+      const name = products.find((p) => p.id === productId)?.name;
+      showAddedToCart(name);
+    } catch (error) {
+      console.error("Failed to add to cart:", error);
+      showAddToCartError();
+    }
   };
 
   const handleProductClick = (productId: string) => {

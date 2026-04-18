@@ -28,6 +28,106 @@ except Exception:
 _openai_invalid_logged = False
 
 
+def _is_grocery_product(p: Product) -> bool:
+    """Matches frontend getProductsByCategory('groceries') / getNonGroceryProducts split."""
+    slug = (getattr(p, "category_slug", None) or "").lower()
+    if slug == "groceries":
+        return True
+    cat = (p.category or "").lower()
+    if cat in ("groceries", "grocery") or "grocery" in cat:
+        return True
+    blob = f"{(p.name or '')} {' '.join(getattr(p, 'tags', None) or [])} {cat}".lower()
+    if any(
+        t in blob
+        for t in (
+            "grocery",
+            "staple",
+            "fresh milk",
+            "organic food",
+            "beverage",
+        )
+    ):
+        return True
+    return False
+
+
+def _filter_products_by_store_mode(all_products: List[Product], store_mode: Optional[str]) -> List[Product]:
+    if not store_mode:
+        return all_products
+    sm = store_mode.lower()
+    if sm == "groceries":
+        return [p for p in all_products if _is_grocery_product(p)]
+    if sm == "general":
+        return [p for p in all_products if not _is_grocery_product(p)]
+    return all_products
+
+
+def _grocery_mode_system_block() -> str:
+    return (
+        "\n\n**STORE MODE: GROCERIES** — The customer is in the **Groceries** (food & essentials) store. "
+        "Use **only** grocery-relevant product IDs from the list above. "
+        "Do not suggest electronics, fashion, or other non-grocery products. If they request those, they can switch to **Aura** (general) in the site header.\n"
+        "If they ask **how to cook** or for a **recipe** (e.g. biryani), give **brief cooking guidance** and suggest **only ingredient-like items** from the product list that match the dish "
+        "(e.g. rice, spices, oil, yogurt, meat, onions). **Never** answer with unrelated “trending” snacks, random fruit, or bottled water unless the user asked for hydration."
+    )
+
+
+def _is_recipe_or_cooking_query(msg_lower: str) -> bool:
+    cues = (
+        "cook", "recipe", "how to make", "how to prepare", "how do i make", "biryani", "biriyani", "biryan",
+        "curry", "ingredient", "marinate", "simmer", "boil", "fry", "roast", "bake",
+    )
+    return any(c in msg_lower for c in cues)
+
+
+def _grocery_cooking_response(message: str, profile_name: str, products: List[Product]) -> tuple:
+    """Recipe / how-to-cook in grocery mode: short tips + ingredient-matched SKUs only."""
+    msg_l = (message or "").lower()
+    ingredient_tokens = (
+        "rice", "basmati", "biryani", "masala", "spice", "garam", "onion", "garlic", "ginger",
+        "tomato", "yoghurt", "yogurt", "curd", "oil", "ghee", "chicken", "mutton", "meat", "beef",
+        "salt", "chili", "chilli", "turmeric", "cumin", "cardamom", "cinnamon", "clove", "bay",
+        "mint", "coriander", "saffron", "cream", "butter", "milk", "paneer", "lentil", "dal",
+        "wheat", "atta", "flour", "stock", "broth",
+    )
+    scored: List[tuple] = []
+    for p in products:
+        blob = f"{p.name} {p.category} {' '.join(getattr(p, 'tags', None) or [])}".lower()
+        score = sum(1 for t in ingredient_tokens if t in blob)
+        if score > 0:
+            scored.append((score, p.rating, p))
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    picks = [x[2] for x in scored[:6]]
+    if not picks:
+        picks = sorted(products, key=lambda p: (-p.rating, -p.review_count))[:4]
+    dish_hint = (
+        "Here’s a **compact biryani-style path** (adjust to what you have):"
+        if ("biryani" in msg_l or "biriyani" in msg_l or "biryan" in msg_l)
+        else "Here’s a **quick cooking outline** for your dish (adapt steps as needed):"
+    )
+    lines = [
+        f"Hi {profile_name}! {dish_hint}",
+        "• **Marinate** protein with yogurt + ginger-garlic + a pinch of turmeric; rest 20–30 min.",
+        "• **Par-cook rice** (basmati) until ~70% done; drain.",
+        "• **Layer** fried onions, protein, rice, warm spices; **dum** (tight lid / sealed) on low heat ~20 min.",
+        "",
+        "From our **Groceries** aisle, these items can help — tap a card to view details:",
+    ]
+    for i, p in enumerate(picks, 1):
+        lines.append(f"{i}. **{p.id}** — {p.name} (₹{p.price:,.0f})")
+    content = "\n".join(lines)
+    return content, [p.id for p in picks[:6]]
+
+
+def _normalize_store_mode_from_context(ctx: Optional[dict]) -> Optional[str]:
+    if not ctx:
+        return None
+    v = (ctx.get("store_mode") or "").strip().lower()
+    if v in ("groceries", "general"):
+        return v
+    return None
+
+
 def _classify_intent(message: str) -> str:
     """
     Classify user message into: quick_order | order | recommend | faq | general.
@@ -44,7 +144,7 @@ def _classify_intent(message: str) -> str:
     product_words = ["shoe", "shoes", "footwear", "shirt", "dress", "watch", "bag", "laptop", "phone", "jeans", "sneaker", "formal", "casual"]
     if any(t in msg_lower for t in quick_order_triggers) and any(w in msg_lower for w in product_words):
         return "quick_order"
-    if msg_lower.startswith(("order ", "buy ", "get me ")) and any(w in msg_lower for w in product_words):
+    if msg_lower.startswith(("order ", "buy ", "get me ", "purchase ")) and any(w in msg_lower for w in product_words):
         return "quick_order"
     # Order: buy, purchase, order, checkout, pay (and not asking "what is order")
     order_words = ["buy", "purchase", "order for me", "checkout", "pay for", "complete my order", "place order"]
@@ -64,11 +164,30 @@ def _classify_intent(message: str) -> str:
     rec_words = ["recommend", "suggest", "find me", "show me", "best ", "good ", "top ", "trending", "popular", "look for"]
     if any(w in msg_lower for w in rec_words) and "order" not in msg_lower:
         return "recommend"
+    # Compare products
+    if "compare" in msg_lower or " vs " in msg_lower or " versus " in msg_lower:
+        return "compare"
+    # Gift assistant ("do it for me" style)
+    if any(
+        t in msg_lower
+        for t in [
+            "birthday gift",
+            "gift for",
+            "present for",
+            "gift under",
+            "need a gift",
+            "gift idea",
+            "something for my",
+        ]
+    ):
+        return "gift_assistant"
     return "general"
 
 
-# Quick order via chat: session_id -> draft { step, attributes, product_id, product }
+# Quick order via chat: session_id -> draft { step, attributes, product_id, product, candidates? }
 _quick_order_drafts: Dict[str, dict] = {}
+# Guided gift flow: session_id -> { step, budget_max?, style? }
+_gift_drafts: Dict[str, dict] = {}
 
 
 def _parse_quick_order_attributes(message: str) -> Dict[str, Any]:
@@ -102,29 +221,43 @@ def _parse_quick_order_attributes(message: str) -> Dict[str, Any]:
     size_match = re.search(r"\b(size\s*)?(8|9|10|11)\b", msg)
     if size_match:
         out["size"] = int(size_match.group(2))
-    # Budget
-    if "no limit" in msg or "any" in msg and "budget" not in msg:
+    # Budget (handles "under ₹2500", "under 2500", "₹2500", "below Rs. 3000")
+    if "no limit" in msg or ("any" in msg and "budget" not in msg):
         out["budget_max"] = None
     else:
-        budget_match = re.search(r"(?:under|below|₹?)\s*(\d{1,6})", msg)
+        budget_match = re.search(
+            r"(?:under|below|upto|up to|less than|max|within)\s+₹?\s*(\d{1,7})|₹\s*(\d{1,7})",
+            msg,
+        )
         if budget_match:
-            out["budget_max"] = int(budget_match.group(1))
-        if "1000" in msg and "2000" in msg:
+            g1, g2 = budget_match.group(1), budget_match.group(2)
+            out["budget_max"] = int(g1 or g2)
+        if "1000" in msg and "2000" in msg and out.get("budget_max") is None:
             out["budget_max"] = 2000
-    # Type: casual, formal, sports
-    if "casual" in msg:
+    # Type: running/jogging → sports; casual, formal, sports
+    if "running" in msg or "jogging" in msg or "trainer" in msg:
+        out["product_type"] = "sports"
+    elif "casual" in msg:
         out["product_type"] = "casual"
     elif "formal" in msg:
         out["product_type"] = "formal"
     elif "sport" in msg:
         out["product_type"] = "sports"
+    size_match2 = re.search(r"\b(?:size|uk)?\s*(8|9|10|11)\b", msg)
+    if size_match2 and out.get("size") is None:
+        out["size"] = int(size_match2.group(1))
     return out
 
 
 def _merge_quick_order_from_message(message: str, attrs: Dict[str, Any]) -> Dict[str, Any]:
     """Parse button-style response (e.g. 'Size 10', 'Under ₹1000') into attributes."""
+    import re
+
     msg = (message or "").strip().lower()
     out = dict(attrs)
+    bm = re.search(r"(?:under|below|upto)\s+₹?\s*(\d{1,7})", msg)
+    if bm and out.get("budget_max") is None:
+        out["budget_max"] = int(bm.group(1))
     if "size" in msg or msg.strip() in ("8", "9", "10", "11"):
         for n in (8, 9, 10, 11):
             if str(n) in msg or f"size {n}" in msg:
@@ -151,19 +284,110 @@ def _select_product_for_quick_order(attrs: Dict[str, Any], products: List[Produc
     color = attrs.get("color")
     budget_max = attrs.get("budget_max")
     product_type = attrs.get("product_type")
-    candidates = list(products)
-    if category:
-        candidates = [p for p in candidates if category.lower() in (p.category or "").lower() or (p.name and category.lower() in p.name.lower())]
-    if color:
-        candidates = [p for p in candidates if (p.colors and any(color in c.lower() for c in p.colors)) or (p.name and color in p.name.lower())]
-    if budget_max is not None:
-        candidates = [p for p in candidates if p.price <= budget_max]
-    candidates = [p for p in candidates if getattr(p, "in_stock", True)]
-    if product_type:
-        candidates = [p for p in candidates if product_type in (p.name or "").lower() or product_type in (p.category or "").lower() or (p.tags and product_type in " ".join(p.tags).lower())]
+
+    def _pool(use_type: bool) -> List[Product]:
+        pt = product_type if use_type else None
+        candidates = list(products)
+        if category:
+            cat_l = category.lower()
+            candidates = [
+                p
+                for p in candidates
+                if cat_l in (p.category or "").lower()
+                or (p.name and cat_l in p.name.lower())
+                or (category == "Footwear" and "shoe" in (p.name or "").lower())
+                or (category == "Clothing" and any(
+                    x in (p.category or "").lower() for x in ("cloth", "fashion", "shirt", "dress")
+                ))
+            ]
+        if color:
+            candidates = [
+                p
+                for p in candidates
+                if (p.colors and any(color in c.lower() for c in p.colors)) or (p.name and color in p.name.lower())
+            ]
+        if budget_max is not None:
+            candidates = [p for p in candidates if p.price <= budget_max]
+        candidates = [p for p in candidates if getattr(p, "in_stock", True)]
+        if pt:
+            narrowed = [
+                p
+                for p in candidates
+                if pt in (p.name or "").lower()
+                or pt in (p.category or "").lower()
+                or (p.tags and pt in " ".join(p.tags).lower())
+            ]
+            if narrowed:
+                candidates = narrowed
+        return candidates
+
+    candidates = _pool(use_type=True)
+    if not candidates and product_type:
+        candidates = _pool(use_type=False)
     if not candidates:
         return None
     return max(candidates, key=lambda p: (p.rating, -p.price))
+
+
+def _select_two_products_for_quick_order(attrs: Dict[str, Any], products: List[Product]) -> List[Product]:
+    """Top two distinct matches for one-shot quick order (user picks A/B)."""
+
+    def _filter(use_type: bool) -> List[Product]:
+        category = attrs.get("category")
+        color = attrs.get("color")
+        budget_max = attrs.get("budget_max")
+        product_type = attrs.get("product_type") if use_type else None
+        candidates = list(products)
+        if category:
+            cat_l = category.lower()
+            candidates = [
+                p
+                for p in candidates
+                if cat_l in (p.category or "").lower()
+                or (p.name and cat_l in p.name.lower())
+                or (category == "Footwear" and "shoe" in (p.name or "").lower())
+                or (category == "Clothing" and any(
+                    x in (p.category or "").lower() for x in ("cloth", "fashion", "shirt", "dress")
+                ))
+            ]
+        if color:
+            candidates = [
+                p
+                for p in candidates
+                if (p.colors and any(color in c.lower() for c in p.colors)) or (p.name and color in p.name.lower())
+            ]
+        if budget_max is not None:
+            candidates = [p for p in candidates if p.price <= budget_max]
+        candidates = [p for p in candidates if getattr(p, "in_stock", True)]
+        if product_type:
+            narrowed = [
+                p
+                for p in candidates
+                if product_type in (p.name or "").lower()
+                or product_type in (p.category or "").lower()
+                or (p.tags and product_type in " ".join(p.tags).lower())
+            ]
+            if len(narrowed) >= 1:
+                candidates = narrowed
+        return candidates
+
+    candidates = _filter(use_type=True)
+    if len(candidates) < 2 and attrs.get("product_type"):
+        candidates = _filter(use_type=False)
+    if len(candidates) < 2:
+        return candidates[:2]
+    ranked = sorted(candidates, key=lambda p: (p.rating, -p.price))
+    return [ranked[0], ranked[1]]
+
+
+def _quick_order_one_shot_ready(attrs: Dict[str, Any]) -> bool:
+    """True when user gave enough detail to skip size/budget steps."""
+    c = attrs.get("category")
+    if not c:
+        return False
+    if c == "Footwear":
+        return attrs.get("size") is not None and attrs.get("budget_max") is not None
+    return attrs.get("budget_max") is not None
 
 
 def _parse_agent_intent(message: str, orders_info: List[dict], cart_count: int) -> Dict[str, Any]:
@@ -334,13 +558,192 @@ Your answer (2-4 sentences):"""
         return None
 
 
-def _handle_recommend_rag(session_id: str, message: str, profile_name: str, context: dict) -> Optional[tuple]:
+def _review_sentiment_line(p: Product) -> str:
+    if p.rating >= 4.3:
+        return f"Shoppers often mention **value** and satisfaction; **{p.rating}★** from {p.review_count}+ reviews."
+    if p.rating >= 3.8:
+        return f"Reviews lean positive on **day-to-day use**; **{p.rating}★** across {p.review_count}+ ratings."
+    return f"Mixed notes in reviews — worth scanning details. **{p.rating}★** ({p.review_count} reviews)."
+
+
+def _format_product_compare(
+    message: str, profile_name: str, store_mode: Optional[str] = None
+) -> Optional[tuple]:
+    """Side-by-side compare: legacy P00 IDs or real catalog IDs (e.g. SHOEH4GRSUBJGZXE)."""
+    import re
+
+    raw = message or ""
+    found_ids: List[str] = []
+
+    for x in re.findall(r"\b(P\d{3,8})\b", raw, re.I):
+        p = get_product(x.upper())
+        if p and p.id not in found_ids:
+            found_ids.append(p.id)
+
+    if len(found_ids) < 2:
+        # Flipkart-style IDs in products.json: letter + alphanumeric, ~10–18 chars
+        for m in re.finditer(r"\b([A-Za-z][A-Za-z0-9]{9,17})\b", raw):
+            token = m.group(1).upper()
+            pr = get_product(token)
+            if pr and pr.id not in found_ids:
+                found_ids.append(pr.id)
+            if len(found_ids) >= 2:
+                break
+
+    if len(found_ids) < 2:
+        return None
+
+    p1, p2 = get_product(found_ids[0]), get_product(found_ids[1])
+    if not p1 or not p2:
+        return (
+            f"Hi {profile_name}! I couldn't load those product IDs. Open any product page and copy the **ID** from the URL or title, e.g. "
+            f"**Compare SHOEH4GRSUBJGZXE vs SRTEH2FF9KEDEFGF** (use two different IDs from our catalog).",
+            [],
+        )
+    if store_mode == "groceries" and (not _is_grocery_product(p1) or not _is_grocery_product(p2)):
+        return (
+            f"Hi {profile_name}! In **Groceries** mode I can only compare **grocery** items. "
+            f"Switch the store to **Aura** in the header to compare fashion, electronics, and more.",
+            [],
+        )
+    lines = [
+        f"Hi {profile_name}! Here's a straight **comparison** (not generic search results).",
+        "",
+        f"| | **{p1.name[:42]}** | **{p2.name[:42]}** |",
+        "|---|---|---|",
+        f"| **Price** | ₹{p1.price:,.0f} | ₹{p2.price:,.0f} |",
+        f"| **Rating** | {p1.rating}★ ({p1.review_count} reviews) | {p2.rating}★ ({p2.review_count} reviews) |",
+        f"| **Category** | {p1.category} | {p2.category} |",
+        "",
+        f"**Reviews — {p1.id}:** {_review_sentiment_line(p1)}",
+        f"**Reviews — {p2.id}:** {_review_sentiment_line(p2)}",
+        "",
+    ]
+    if p1.rating != p2.rating:
+        winner = p1 if p1.rating > p2.rating else p2
+        lines.append(
+            f"**Verdict:** **{winner.name[:48]}** wins on rating; pick the other if **₹{min(p1.price, p2.price):,.0f}** matters more."
+        )
+    else:
+        lines.append("**Verdict:** Tie on rating — choose by **price** or **brand** preference.")
+    return ("\n".join(lines), [p1.id, p2.id])
+
+
+def _build_quick_order_confirm_content(
+    session_id: str,
+    product: Product,
+    profile_name: str,
+    wallet_info: dict,
+    request_context: dict,
+    attrs: Optional[Dict[str, Any]] = None,
+) -> tuple:
+    """Human copy + actions for quick-order confirm step."""
+    from app.order_service import get_user_profile
+
+    profile = None
+    try:
+        profile = get_user_profile(request_context.get("user_id") or session_id)
+    except Exception:
+        pass
+    address = "Default address (update in Profile)"
+    if profile and getattr(profile, "addresses", None):
+        addrs = profile.addresses if isinstance(profile.addresses, list) else []
+        if addrs:
+            address = addrs[0]
+    wallet_bal = wallet_info.get("balance", 0)
+    size_hint = ""
+    if attrs and attrs.get("size"):
+        size_hint = f"\n_I can remember **size {attrs['size']}** for your next shoe order._\n"
+    content = (
+        f"Hi {profile_name}! Here's the best match right now:\n\n**{product.name}** — **₹{product.price}** ({product.rating}⭐){size_hint}"
+        f"\n\n**Order summary:**\n• Product: {product.name}\n• Price: ₹{product.price}\n"
+        f"• Delivery: {address[:50]}{'...' if len(address) > 50 else ''}\n• Payment: Card / UPI at checkout\n• Wallet: ₹{wallet_bal:.0f} available\n\n"
+        f"Ready to place it?"
+    )
+    actions = [
+        {"type": "quick_order_confirm", "label": "Confirm & Place Order", "payload": "confirm"},
+        {"type": "quick_order_change", "label": "Change Details", "payload": "change"},
+    ]
+    return content, actions
+
+
+def _process_gift_assistant(session_id: str, message: str, profile_name: str, products: List[Product]) -> Optional[tuple]:
+    """Short guided flow: budget → recipient → 3 curated picks ('do it for me')."""
+    import re
+
+    global _gift_drafts
+    msg = (message or "").strip().lower()
+    d = _gift_drafts.get(session_id)
+
+    if not d:
+        bm = re.search(r"(?:under|below|upto|up to|₹)\s*(\d{3,6})", msg)
+        budget = int(bm.group(1)) if bm else None
+        if budget:
+            _gift_drafts[session_id] = {"step": "who", "budget_max": budget}
+            return (
+                f"Got it — **under ₹{budget}**. Who's it for? Reply **kid**, **parent**, **partner**, or **friend** — I'll shortlist 3 ideas.",
+                [],
+            )
+        _gift_drafts[session_id] = {"step": "budget", "budget_max": None}
+        return (
+            f"Let's nail a gift, {profile_name}. What's your **budget**? (e.g. **under ₹2000** — I'll remember it for next time.)",
+            [],
+        )
+
+    if d.get("step") == "budget":
+        bm = re.search(r"(?:under|below|₹)\s*(\d{3,6})", msg)
+        if not bm:
+            return ("What's your budget number? e.g. **under ₹1500**", [])
+        budget = int(bm.group(1))
+        d["budget_max"] = budget
+        d["step"] = "who"
+        _gift_drafts[session_id] = d
+        return (
+            f"**₹{budget}** — nice. Who's it for? **kid**, **parent**, **partner**, or **friend**?",
+            [],
+        )
+
+    if d.get("step") == "who":
+        budget = d.get("budget_max") or 3000
+        tags = []
+        if "kid" in msg or "child" in msg:
+            tags = ["toy", "game", "fun", "color"]
+        elif "parent" in msg or "mom" in msg or "dad" in msg:
+            tags = ["classic", "comfort", "home"]
+        elif "partner" in msg or "wife" in msg or "husband" in msg:
+            tags = ["premium", "elegant", "gift"]
+        else:
+            tags = ["popular", "gift", "trending"]
+        pool = [p for p in products if p.price <= budget and getattr(p, "in_stock", True)]
+        pool = sorted(pool, key=lambda p: (-p.rating, -p.review_count))[:40]
+        picked = pool[:3]
+        if not picked:
+            del _gift_drafts[session_id]
+            return ("Nothing in stock in that range — try a slightly higher budget?", [])
+        intro = (
+            f"Here are **3 gift ideas** under ₹{budget} — picked for **{tags[0]}** vibes. "
+            f"Tap a card to add, or say **deliver to me** after adding to cart."
+        )
+        lines = [f"Hi {profile_name}! {intro}", ""]
+        for i, p in enumerate(picked, 1):
+            lines.append(f"{i}. **{p.id}** — {p.name} (₹{p.price}) · {p.rating}⭐")
+        del _gift_drafts[session_id]
+        return ("\n".join(lines), [p.id for p in picked])
+
+
+def _handle_recommend_rag(
+    session_id: str, message: str, profile_name: str, context: dict, store_mode: Optional[str] = None
+) -> Optional[tuple]:
     """
     RAG recommend: hybrid search -> top 15 -> LLM rerank top 5 -> preference boost.
     Returns (content, product_ids) or None on failure.
     """
     try:
+        import math
+
+        from app.behavior_signals import rank_products_with_behavior
         from app.rag_store import search_products_hybrid
+
         hybrid = search_products_hybrid(message, top_k=15)
         if not hybrid:
             return None
@@ -350,7 +753,14 @@ def _handle_recommend_rag(session_id: str, message: str, profile_name: str, cont
             p = get_product(pid)
             if p:
                 products.append(p)
+        if store_mode == "groceries":
+            products = [p for p in products if _is_grocery_product(p)]
         if not products:
+            if store_mode == "groceries" and product_ids:
+                return (
+                    f"Hi {profile_name}! I didn't find **grocery** matches for that. Try **staples**, **dairy**, **snacks**, or a budget like **under ₹500**.",
+                    [],
+                )
             return None
         # Build product list for LLM
         product_list = "\n".join(
@@ -396,6 +806,14 @@ Example: [{{"product_id": "P001", "reason": "Best value under budget"}}, ...]"""
                 pass
         if not top5_ids:
             top5_ids = [p.id for p in products[:5]]
+        # Re-rank by behavior (clicks/adds/purchases) + trending (review volume)
+        uid = context.get("active_user_id")
+        trending_boost = {}
+        for pid in top5_ids:
+            pr = get_product(pid)
+            if pr:
+                trending_boost[pid] = math.log(1 + max(pr.review_count, 0)) / 15.0
+        top5_ids = rank_products_with_behavior(uid, session_id, list(dict.fromkeys(top5_ids)), trending_boost)[:8]
         # Preference boost: if user said "under X", move matching products up
         import re
         budget_match = re.search(r"under\s+₹?(\d+)|below\s+₹?(\d+)|<\s*₹?(\d+)", message.lower())
@@ -414,14 +832,21 @@ Example: [{{"product_id": "P001", "reason": "Best value under budget"}}, ...]"""
                 return (in_budget, -p.rating)
             top5_ids = sorted(top5_ids, key=rank_key)[:5]
         if not content:
-            content = f"Hi {profile_name}! Here are my top 5 picks for you:\n\n"
+            content = (
+                f"Hi {profile_name}! I ranked these by **your past clicks/cart buys**, **trending reviews**, "
+                f"and fit — the **top 3** below have the best chance you'll love them:\n\n"
+            )
             for i, pid in enumerate(top5_ids[:5], 1):
                 p = get_product(pid)
                 if p:
                     content += f"{i}. **{p.id}** - {p.name}, ₹{p.price} | {p.rating}⭐\n"
-            content += "\nClick any product card to view details or add to cart!"
+            content += "\nTap a card — to **compare**, paste two catalog IDs: **Compare SHOEH4GRSUBJGZXE vs SRTEH2FF9KEDEFGF**."
         else:
-            content = f"Hi {profile_name}! Based on your request, here are my top 5 recommendations:\n\n" + content + "\nClick any card to view or add to cart!"
+            content = (
+                f"Hi {profile_name}! Personalized with **behavior + trending** signals:\n\n"
+                + content
+                + "\nTap a card — or ask to **compare** two IDs."
+            )
         return (content, top5_ids[:5])
     except Exception:
         return None
@@ -447,6 +872,9 @@ def _build_user_summary(context: dict) -> str:
     viewed = context.get("viewed_product_ids", [])
     cart = context.get("cart_ids", [])
     parts = []
+    ps = (context.get("preference_summary") or "").strip()
+    if ps:
+        parts.append(f"Saved preferences: {ps}")
     if context.get("user_name"):
         parts.append(f"Logged-in user: {context['user_name']}")
     if context.get("order_categories"):
@@ -483,6 +911,7 @@ def get_recommendations(
     if user_id:
         try:
             from app.order_service import get_user_profile, get_user_orders
+
             profile = get_user_profile(user_id)
             orders = get_user_orders(user_id)
             if profile:
@@ -501,6 +930,12 @@ def get_recommendations(
                 context["order_categories"] = order_cats[:10]
         except Exception:
             pass
+    try:
+        from app.user_preferences import enrich_context
+
+        context = enrich_context(context, user_id, session_id)
+    except Exception:
+        pass
     context_key = hashlib.md5(
         f"{limit}_{max_price}_{category}_{exclude_product_ids}_{user_id or ''}".encode()
     ).hexdigest()
@@ -595,18 +1030,23 @@ Order by relevance. Prefer products that match budget, category affinity, and hi
     return out
 
 
-def chat(session_id: str, message: str, history: Optional[List[dict]] = None) -> dict:
+def chat(session_id: str, message: str, history: Optional[List[dict]] = None, context: Optional[dict] = None) -> dict:
     """
     Enhanced AI shopping assistant with FULL SYSTEM ACCESS - true agent capabilities.
     Returns { content, product_ids } for inline product cards.
     """
     from app.order_service import get_user_orders, get_user_profile
+    from app.user_preferences import enrich_context
     from app.wallet_service import get_wallet_summary
     from app.data_store import get_categories
-    
-    context = get_session_context(session_id)
-    products = load_products()
-    
+
+    request_context = context if isinstance(context, dict) else {}
+    user_id_for_data = request_context.get("user_id") or session_id
+    _store_mode = _normalize_store_mode_from_context(request_context)
+
+    context = enrich_context(get_session_context(session_id), request_context.get("user_id"), session_id)
+    products = _filter_products_by_store_mode(load_products(), _store_mode)
+
     # Get comprehensive user data
     cart_ids = context.get("cart_ids", [])
     cart_items = []
@@ -615,11 +1055,11 @@ def chat(session_id: str, message: str, history: Optional[List[dict]] = None) ->
         cart_items = [get_product(pid) for pid in cart_ids]
         cart_items = [p for p in cart_items if p]
         cart_total = sum(p.price for p in cart_items)
-    
+
     # Get orders
     orders_info = []
     try:
-        orders = get_user_orders(session_id)
+        orders = get_user_orders(user_id_for_data)
         for order in orders[:3]:
             orders_info.append({
                 "id": order.id,
@@ -627,29 +1067,29 @@ def chat(session_id: str, message: str, history: Optional[List[dict]] = None) ->
                 "status": order.status.value,
                 "items_count": len(order.items)
             })
-    except:
+    except Exception:
         pass
-    
+
     # Get wallet
     wallet_info = {"balance": 0, "pending_points": 0, "total_earned": 0}
     try:
-        wallet_summary = get_wallet_summary(session_id)
+        wallet_summary = get_wallet_summary(user_id_for_data)
         wallet_info = {
             "balance": wallet_summary.get("balance", 0),
             "pending_points": wallet_summary.get("pending_points", 0),
             "total_earned": wallet_summary.get("total_earned", 0),
             "expiring_soon": wallet_summary.get("expiring_soon", 0)
         }
-    except:
+    except Exception:
         pass
-    
+
     # Get profile
     profile_name = "there"
     try:
-        profile = get_user_profile(session_id)
+        profile = get_user_profile(user_id_for_data)
         if profile and profile.name:
             profile_name = profile.name
-    except:
+    except Exception:
         pass
     
     # Sample products across categories
@@ -679,7 +1119,7 @@ def chat(session_id: str, message: str, history: Optional[List[dict]] = None) ->
     if agent_result.get("intent") and agent_result["intent"] != "none":
         profile_address = None
         try:
-            profile = get_user_profile(session_id)
+            profile = get_user_profile(user_id_for_data)
             if profile and getattr(profile, "addresses", None):
                 addrs = profile.addresses if isinstance(profile.addresses, list) else []
                 if addrs:
@@ -700,6 +1140,18 @@ def chat(session_id: str, message: str, history: Optional[List[dict]] = None) ->
 
     # Intent-based routing: order -> agentic flow; recommend -> RAG; faq -> RAG; else general chat
     intent = _classify_intent(message)
+    if intent == "compare":
+        cmp_res = _format_product_compare(message, profile_name, _store_mode)
+        if cmp_res and cmp_res[0]:
+            return {"content": cmp_res[0], "product_ids": cmp_res[1][:6]}
+        return {
+            "content": "I need **two product IDs** — e.g. **Compare SHOEH4GRSUBJGZXE vs SRTEH2FF9KEDEFGF** (IDs match your catalog / product URLs).",
+            "product_ids": [],
+        }
+    if intent == "gift_assistant" or session_id in _gift_drafts:
+        gr = _process_gift_assistant(session_id, message, profile_name, products)
+        if gr:
+            return {"content": gr[0], "product_ids": gr[1][:6]}
     if intent == "order":
         if cart_items:
             content = f"Hi {profile_name}! I can help you complete your purchase.\n\n"
@@ -715,10 +1167,16 @@ def chat(session_id: str, message: str, history: Optional[List[dict]] = None) ->
             return {"content": faq_content, "product_ids": []}
         return {"content": "I don't have that specific information. You can ask about orders, wallet, or product recommendations!", "product_ids": []}
     if intent == "recommend":
-        rag_result = _handle_recommend_rag(session_id, message, profile_name, context)
+        rag_result = _handle_recommend_rag(session_id, message, profile_name, context, _store_mode)
         if rag_result:
             return {"content": rag_result[0], "product_ids": rag_result[1][:6]}
 
+    msg_lower_chat = (message or "").lower()
+    if _store_mode == "groceries" and _is_recipe_or_cooking_query(msg_lower_chat):
+        cook_c, cook_pids = _grocery_cooking_response(message, profile_name, products)
+        return {"content": cook_c, "product_ids": cook_pids}
+
+    groc_extra = _grocery_mode_system_block() if _store_mode == "groceries" else ""
     system = f"""You are AuraShop's intelligent AI assistant with FULL SYSTEM ACCESS. You're a true agent!
 
 🎯 YOUR CAPABILITIES:
@@ -759,7 +1217,7 @@ Activity:
 - Keep under 200 words
 - Guide actions: "Add to cart?", "Want similar items?"
 
-Remember: You have REAL user data. Use it for accurate, personalized help!"""
+Remember: You have REAL user data. Use it for accurate, personalized help!{groc_extra}"""
 
     user_block = f"""User message: {message}"""
 
@@ -795,9 +1253,13 @@ Remember: You have REAL user data. Use it for accurate, personalized help!"""
                 _openai_invalid_logged = True
             elif not is_invalid_key:
                 print(f"OpenAI chat error: {e}")
-            content, product_ids = _intelligent_fallback(message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context)
+            content, product_ids = _intelligent_fallback(
+                message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context, _store_mode
+            )
     else:
-        content, product_ids = _intelligent_fallback(message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context)
+        content, product_ids = _intelligent_fallback(
+            message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context, _store_mode
+        )
 
     return {"content": content, "product_ids": product_ids[:6]}
 
@@ -844,15 +1306,17 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
     """
     import re
     from app.order_service import get_user_orders, get_user_profile
+    from app.user_preferences import enrich_context, merge_quick_order_attrs
     from app.wallet_service import get_wallet_summary
     from app.data_store import get_categories
 
     request_context = context or {}
     current_page = request_context.get("current_page") or ""
     user_id_for_data = request_context.get("user_id") or session_id  # Use email when logged in for orders/wallet
+    _store_mode = _normalize_store_mode_from_context(request_context)
 
-    context = get_session_context(session_id)
-    products = load_products()
+    context = enrich_context(get_session_context(session_id), request_context.get("user_id"), session_id)
+    products = _filter_products_by_store_mode(load_products(), _store_mode)
     cart_ids = context.get("cart_ids", [])
     cart_items = []
     cart_total = 0
@@ -908,7 +1372,7 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
     if agent_result.get("intent") and agent_result["intent"] != "none":
         profile_address = None
         try:
-            profile = get_user_profile(session_id)
+            profile = get_user_profile(user_id_for_data)
             if profile and getattr(profile, "addresses", None):
                 addrs = profile.addresses if isinstance(profile.addresses, list) else []
                 if addrs:
@@ -933,8 +1397,118 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
     intent = _classify_intent(message)
     msg_lower = (message or "").lower()
 
+    # ----- Compare (IDs in message) -----
+    if intent == "compare":
+        cmp_res = _format_product_compare(message, profile_name, _store_mode)
+        if cmp_res and cmp_res[0]:
+            act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
+            yield {"content": cmp_res[0]}
+            yield {"done": True, "product_ids": cmp_res[1][:6], "actions": act}
+            return
+        act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
+        yield {
+            "content": "I need **two product IDs** in your message — e.g. **Compare SHOEH4GRSUBJGZXE vs SRTEH2FF9KEDEFGF** (copy IDs from the product URL or page).",
+        }
+        yield {"done": True, "product_ids": [], "actions": act}
+        return
+
+    # ----- Gift assistant -----
+    if intent == "gift_assistant" or session_id in _gift_drafts:
+        gr = _process_gift_assistant(session_id, message, profile_name, products)
+        if gr:
+            act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
+            yield {"content": gr[0]}
+            yield {"done": True, "product_ids": gr[1][:6], "actions": act}
+            return
+
     # ----- Quick Order via Chat -----
     draft = _quick_order_drafts.get(session_id)
+
+    # Pick between two one-shot options
+    if draft and draft.get("step") == "pick_option":
+        cands = draft.get("candidates") or []
+        msg_clean = (message or "").strip().lower()
+        chosen_id = None
+        if msg_clean in ("1", "first", "first one", "option 1", "a", "one"):
+            chosen_id = cands[0] if len(cands) > 0 else None
+        elif msg_clean in ("2", "second", "second one", "option 2", "b", "two"):
+            chosen_id = cands[1] if len(cands) > 1 else None
+        else:
+            cand_upper = [c.upper() for c in cands]
+            for x in re.findall(r"\b(P\d{3,8})\b", message or "", re.I):
+                if x.upper() in cand_upper:
+                    chosen_id = x.upper()
+                    break
+            if not chosen_id:
+                for x in re.findall(r"\b([A-Za-z][A-Za-z0-9]{9,17})\b", message or ""):
+                    u = x.upper()
+                    if u in cand_upper:
+                        chosen_id = u
+                        break
+        if chosen_id:
+            p_sel = get_product(chosen_id)
+            if p_sel:
+                draft["step"] = "confirm"
+                draft["product_id"] = p_sel.id
+                draft["product"] = p_sel
+                _quick_order_drafts[session_id] = draft
+                content, actions = _build_quick_order_confirm_content(
+                    session_id, p_sel, profile_name, wallet_info, request_context, draft.get("attributes")
+                )
+                yield {"content": content}
+                yield {"done": True, "product_ids": [p_sel.id], "actions": actions}
+                return
+
+    # One-line quick order: "Order black running shoes size 9 under ₹2500"
+    if intent == "quick_order" and _quick_order_one_shot_ready(_parse_quick_order_attributes(message)):
+        draft_os = _quick_order_drafts.get(session_id)
+        if not draft_os or draft_os.get("step") in (None, "collect"):
+            products_list = products
+            attrs_os = _parse_quick_order_attributes(message)
+            pair = _select_two_products_for_quick_order(attrs_os, products_list)
+            if len(pair) == 1:
+                p0 = pair[0]
+                _quick_order_drafts[session_id] = {
+                    "step": "confirm",
+                    "attributes": attrs_os,
+                    "product_id": p0.id,
+                    "product": p0,
+                }
+                content, actions = _build_quick_order_confirm_content(
+                    session_id, p0, profile_name, wallet_info, request_context, attrs_os
+                )
+                yield {"content": content}
+                yield {"done": True, "product_ids": [p0.id], "actions": actions}
+                return
+            if len(pair) >= 2:
+                _quick_order_drafts[session_id] = {
+                    "step": "pick_option",
+                    "candidates": [pair[0].id, pair[1].id],
+                    "attributes": attrs_os,
+                    "product": None,
+                    "product_id": None,
+                }
+                try:
+                    merge_quick_order_attrs(request_context.get("user_id"), session_id, attrs_os)
+                except Exception:
+                    pass
+                content = (
+                    f"Nice — I found **two** strong options that match. Which should we ship?\n\n"
+                    f"**1.** {pair[0].name} — ₹{pair[0].price} ({pair[0].rating}⭐)\n"
+                    f"**2.** {pair[1].name} — ₹{pair[1].price} ({pair[1].rating}⭐)\n\n"
+                    f"Reply **1** or **2**, or paste a **product ID**."
+                )
+                yield {"content": content}
+                yield {
+                    "done": True,
+                    "product_ids": [pair[0].id, pair[1].id],
+                    "actions": [
+                        {"type": "quick_order_pick", "label": "Option 1", "payload": pair[0].id},
+                        {"type": "quick_order_pick", "label": "Option 2", "payload": pair[1].id},
+                    ],
+                }
+                return
+
     confirm_msg = msg_lower in ("confirm", "confirm and place order", "confirm & place order", "place order", "yes", "confirm order")
     change_msg = msg_lower in ("change details", "change", "change details please", "no")
 
@@ -956,6 +1530,10 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
             points = calculate_cashback(order.total)
             from datetime import datetime, timedelta
             delivery_date = (datetime.utcnow() + timedelta(days=5)).strftime("%b %d, %Y")
+            try:
+                merge_quick_order_attrs(request_context.get("user_id"), session_id, draft.get("attributes") or {})
+            except Exception:
+                pass
             content = f"Done! **Order placed.**\n\n**Order ID:** {order.id}\n**Delivery by:** {delivery_date}\n**Earned AuraPoints:** ₹{points:.0f} (credited after delivery)\n\nView order: [Order {order.id}](/orders/{order.id})"
             del _quick_order_drafts[session_id]
             yield {"content": content}
@@ -975,7 +1553,7 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
         return
 
     if draft or intent == "quick_order":
-        products_list = load_products()
+        products_list = products
         if not draft:
             attrs = _parse_quick_order_attributes(message)
             draft = {"step": "collect", "attributes": attrs, "product_id": None, "product": None}
@@ -989,7 +1567,7 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
         need_type = attrs.get("product_type") is None
 
         if need_size:
-            content = f"Got it—looking for **{attrs.get('color') or 'your'} {attrs.get('category') or 'item'}** for **{attrs.get('gender') or 'you'}**. What size?"
+            content = f"Got it — **{attrs.get('color') or 'those'}** {attrs.get('category') or 'items'} for **{attrs.get('gender') or 'you'}**. What's your usual size? _(I'll remember it for next time.)_"
             actions = [{"type": "quick_order_option", "label": "Size 8", "payload": "size=8"}, {"type": "quick_order_option", "label": "Size 9", "payload": "size=9"}, {"type": "quick_order_option", "label": "Size 10", "payload": "size=10"}, {"type": "quick_order_option", "label": "Size 11", "payload": "size=11"}]
             yield {"content": content}
             yield {"done": True, "product_ids": [], "actions": actions}
@@ -1021,20 +1599,9 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
         draft["product"] = product
         _quick_order_drafts[session_id] = draft
 
-        profile = None
-        try:
-            profile = get_user_profile(request_context.get("user_id") or session_id)
-        except Exception:
-            pass
-        address = "Default address (update in Profile)"
-        if profile and getattr(profile, "addresses", None):
-            addrs = profile.addresses if isinstance(profile.addresses, list) else []
-            if addrs:
-                address = addrs[0]
-        wallet_bal = wallet_info.get("balance", 0)
-
-        content = f"Here’s the best match for you:\n\n**{product.name}** — **₹{product.price}** ({product.rating}⭐)\n\n**Order summary:**\n• Product: {product.name}\n• Price: ₹{product.price}\n• Delivery: {address[:50]}{'...' if len(address) > 50 else ''}\n• Payment: Card / UPI at checkout\n• Wallet: ₹{wallet_bal:.0f} available\n\nConfirm to place order?"
-        actions = [{"type": "quick_order_confirm", "label": "Confirm & Place Order", "payload": "confirm"}, {"type": "quick_order_change", "label": "Change Details", "payload": "change"}]
+        content, actions = _build_quick_order_confirm_content(
+            session_id, product, profile_name, wallet_info, request_context, draft.get("attributes")
+        )
         yield {"content": content}
         yield {"done": True, "product_ids": [product.id], "actions": actions}
         return
@@ -1063,7 +1630,7 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
         return
 
     if intent == "recommend":
-        rag_result = _handle_recommend_rag(session_id, message, profile_name, context)
+        rag_result = _handle_recommend_rag(session_id, message, profile_name, context, _store_mode)
         if rag_result:
             yield {"content": rag_result[0]}
             yield {"done": True, "product_ids": rag_result[1][:6], "actions": actions}
@@ -1072,6 +1639,13 @@ def chat_stream(session_id: str, message: str, history: Optional[List[dict]] = N
             yield {"done": True, "product_ids": [], "actions": []}
         return
 
+    if _store_mode == "groceries" and _is_recipe_or_cooking_query(msg_lower):
+        cook_content, cook_ids = _grocery_cooking_response(message, profile_name, products)
+        yield {"content": cook_content}
+        yield {"done": True, "product_ids": cook_ids, "actions": actions}
+        return
+
+    groc_extra = _grocery_mode_system_block() if _store_mode == "groceries" else ""
     system = f"""You are AuraShop's friendly AI shopping assistant. Be conversational and helpful.
 
 USER: {profile_name}
@@ -1081,7 +1655,7 @@ Activity: {user_context}
 Categories: {', '.join(categories[:12])}
 Products (use IDs like P00123 for cards): {product_list[:4000]}
 
-Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs for recommendations. Be warm and interactive."""
+Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs for recommendations. Be warm and interactive.{groc_extra}"""
 
     user_block = f"User: {message}"
     messages = [{"role": "system", "content": system}]
@@ -1118,7 +1692,7 @@ Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs fo
             if ("401" in err_str or "invalid_api_key" in err_str) and not _openai_invalid_logged:
                 _openai_invalid_logged = True
             content, product_ids = _intelligent_fallback(
-                message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context
+                message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context, _store_mode
             )
             act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
             yield {"content": content}
@@ -1126,7 +1700,7 @@ Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs fo
             return
     else:
         content, product_ids = _intelligent_fallback(
-            message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context
+            message, profile_name, cart_items, cart_total, wallet_info, orders_info, products, by_cat, user_context, _store_mode
         )
         act = _build_chat_actions("general", bool(cart_items), cart_total, wallet_info.get("balance", 0), current_page, msg_lower)
         yield {"content": content}
@@ -1134,15 +1708,30 @@ Reply in 1-3 short paragraphs. Use **bold** for emphasis. Mention product IDs fo
         return
 
 
-def _intelligent_fallback(message: str, profile_name: str, cart_items: List, cart_total: float, wallet_info: dict, orders_info: List, products: List[Product], by_cat: Dict, user_context: str) -> tuple:
+def _intelligent_fallback(
+    message: str,
+    profile_name: str,
+    cart_items: List,
+    cart_total: float,
+    wallet_info: dict,
+    orders_info: List,
+    products: List[Product],
+    by_cat: Dict,
+    user_context: str,
+    store_mode: Optional[str] = None,
+) -> tuple:
     """
     Intelligent rule-based AI agent when OpenAI is unavailable.
     Handles: search, recommendations, cart, orders, wallet, comparisons.
     """
     import re
     msg_lower = message.lower()
-    product_ids = []
-    
+    product_ids: List[str] = []
+
+    if store_mode == "groceries" and _is_recipe_or_cooking_query(msg_lower):
+        content, ids = _grocery_cooking_response(message, profile_name, products)
+        return content, ids
+
     # SEARCH/PRODUCT QUERIES - Extract budget and category
     budget_match = re.search(r'under\s+₹?(\d+)|below\s+₹?(\d+)|<\s*₹?(\d+)|budget\s+of\s+₹?(\d+)|price\s+around\s+₹?(\d+)', msg_lower)
     budget = None
@@ -1316,16 +1905,17 @@ def _intelligent_fallback(message: str, profile_name: str, cart_items: List, car
         if budget:
             results = [p for p in results if p.price <= budget]
         
-        # Sort by rating
+        total_n = len(results)
+        # Sort by rating — show top 3–4 best-rated among all matches
         results = sorted(results, key=lambda p: (-p.rating, p.price))[:4]
         
         if results:
-            content = f"Hi {profile_name}! 🔍 Found {len(results)} great options"
+            content = f"Hi {profile_name}! 🔍 I scanned **{total_n}** options"
             if budget:
                 content += f" under ₹{budget}"
             if matching_category:
                 content += f" in {matching_category}"
-            content += ":\n\n"
+            content += f" — here are the **{len(results)} best-rated**:\n\n"
             
             for i, p in enumerate(results, 1):
                 content += f"{i}. **{p.id}** - {p.name}\n   ₹{p.price} | {p.rating}⭐\n\n"

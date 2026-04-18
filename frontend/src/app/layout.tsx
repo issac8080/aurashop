@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
-import { Outfit, Nunito } from "next/font/google";
+import { Manrope } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { ChatWidget } from "@/components/ChatWidget";
 import { BackendOfflineBanner } from "@/components/BackendOfflineBanner";
 import { Providers } from "./providers";
 
-const outfit = Outfit({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-heading",
+  variable: "--font-manrope",
   display: "swap",
-});
-
-const nunito = Nunito({
-  subsets: ["latin"],
-  variable: "--font-body",
-  display: "swap",
+  weight: ["300", "700"],
 });
 
 export const metadata: Metadata = {
@@ -29,8 +24,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${outfit.variable} ${nunito.variable}`}>
-      <body className="min-h-screen antialiased font-sans text-foreground">
+    <html lang="en" suppressHydrationWarning className={manrope.variable}>
+      <body className="min-h-screen antialiased font-sans font-light text-foreground">
         <Providers>
           <BackendOfflineBanner />
           <Header />

@@ -3,6 +3,9 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { getSessionId } from "@/lib/session";
 import { getCart } from "@/lib/api";
+import { ShoppingVibeProvider } from "@/context/shopping-vibe-context";
+import { StoreModeProvider } from "@/context/store-mode-context";
+import { CartToastProvider } from "@/components/CartToastProvider";
 
 const AURA_USER_KEY = "aura_user";
 
@@ -81,7 +84,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       <CartContext.Provider value={{ cartCount, refreshCart, sessionId }}>
-        {children}
+        <CartToastProvider>
+          <StoreModeProvider>
+            <ShoppingVibeProvider>{children}</ShoppingVibeProvider>
+          </StoreModeProvider>
+        </CartToastProvider>
       </CartContext.Provider>
     </AuthContext.Provider>
   );

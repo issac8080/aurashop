@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/utils";
+import { getProductImageSrc, getProductImagePlaceholder } from "@/lib/unsplash";
 import { SpinWheel } from "@/components/SpinWheel";
 import { useCart } from "@/app/providers";
 
@@ -18,7 +19,15 @@ const API = "/api";
 type Order = {
   id: string;
   user_id: string;
-  items: Array<{ product_id: string; product_name?: string; quantity: number; price: number; image_url?: string | null }>;
+  items: Array<{
+    product_id: string;
+    product_name?: string;
+    product_category?: string;
+    quantity: number;
+    price: number;
+    image_url?: string | null;
+    thumbnail_url?: string | null;
+  }>;
   total: number;
   delivery_method: string;
   status: string;
@@ -51,6 +60,7 @@ export default function OrderDetailPage() {
   const [markingDelivered, setMarkingDelivered] = useState(false);
   const [cashbackInfo, setCashbackInfo] = useState<{ amount: number; rate: string } | null>(null);
   const [spinOpen, setSpinOpen] = useState(false);
+  const [returnId, setReturnId] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadOrder() {
@@ -59,9 +69,22 @@ export default function OrderDetailPage() {
         const data = await res.json().catch(() => null);
         if (!res.ok || !data?.id) {
           setOrder(null);
+          setReturnId(null);
           return;
         }
         setOrder(data);
+        try {
+          const retRes = await fetch(`${API}/returns/order/${encodeURIComponent(data.id)}`);
+          if (retRes.ok) {
+            const ret = await retRes.json().catch(() => null);
+            if (ret?.id != null) setReturnId(Number(ret.id));
+            else setReturnId(null);
+          } else {
+            setReturnId(null);
+          }
+        } catch {
+          setReturnId(null);
+        }
         if (data.status === "delivered" || data.status === "picked_up") {
           try {
             const cashbackRes = await fetch(`${API}/wallet/preview-cashback?order_total=${data.total}`);
@@ -331,15 +354,44 @@ export default function OrderDetailPage() {
               <CardTitle>Order Items</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {order.items.map((item, i) => (
-                <div key={i} className="flex justify-between items-center py-2 border-b last:border-0">
-                  <div>
-                    <p className="font-medium">Product {item.product_id}</p>
-                    <p className="text-sm text-muted-foreground">Quantity: {item.quantity}</p>
+              {order.items.map((item, i) => {
+                const title = item.product_name || `Product ${item.product_id}`;
+                const cat = item.product_category || "General";
+                const imgSrc = getProductImageSrc(
+                  item.image_url ?? undefined,
+                  cat,
+                  item.product_id,
+                  title,
+                  item.thumbnail_url ?? undefined
+                );
+                return (
+                  <div
+                    key={i}
+                    className="flex gap-3 items-center py-3 border-b last:border-0"
+                  >
+                    <Link
+                      href={`/products/${item.product_id}`}
+                      className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted"
+                    >
+                      <img
+                        src={imgSrc}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = getProductImagePlaceholder(title);
+                        }}
+                      />
+                    </Link>
+                    <div className="flex-1 min-w-0">
+                      <Link href={`/products/${item.product_id}`}>
+                        <p className="font-medium line-clamp-2 hover:text-primary">{title}</p>
+                      </Link>
+                      <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                    </div>
+                    <p className="font-medium shrink-0">{formatPrice(item.price * item.quantity)}</p>
                   </div>
-                  <p className="font-medium">{formatPrice(item.price * item.quantity)}</p>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         </div>
@@ -385,15 +437,28 @@ export default function OrderDetailPage() {
                 
                 {/* Return / Exchange Button */}
                 {(order.status === "delivered" || order.status === "picked_up") && (
-                  <Link href={`/returns/create?orderId=${order.id}`}>
-                    <Button
-                      variant="outline"
-                      className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Return / Exchange
-                    </Button>
-                  </Link>
+                  <>
+                    {returnId != null && (
+                      <Link href={`/returns/${returnId}`}>
+                        <Button
+                          variant="secondary"
+                          className="w-full mb-2 border border-emerald-600/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                        >
+                          <Package className="h-4 w-4 mr-2" />
+                          View return status
+                        </Button>
+                      </Link>
+                    )}
+                    <Link href={`/returns/create?orderId=${order.id}`}>
+                      <Button
+                        variant="outline"
+                        className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Return / Exchange
+                      </Button>
+                    </Link>
+                  </>
                 )}
                 
                 {/* Cancel Order Button */}

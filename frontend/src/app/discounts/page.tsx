@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Tag,
@@ -15,6 +16,7 @@ import {
   Heart,
   Bot,
   Coins,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,6 +54,26 @@ export default function DiscountsPage() {
     message: string;
     min_order: number;
   } | null>(null);
+
+  const [autoApply, setAutoApply] = useState(false);
+
+  useEffect(() => {
+    try {
+      setAutoApply(localStorage.getItem("aurashop_auto_apply_coupon") === "1");
+    } catch {
+      setAutoApply(false);
+    }
+  }, []);
+
+  const setAutoApplyPersist = (v: boolean) => {
+    setAutoApply(v);
+    try {
+      if (v) localStorage.setItem("aurashop_auto_apply_coupon", "1");
+      else localStorage.removeItem("aurashop_auto_apply_coupon");
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -165,20 +187,103 @@ export default function DiscountsPage() {
           </div>
           {/* Robot with coins - right side */}
           <div className="hidden md:flex relative w-28 h-28 shrink-0 items-center justify-center">
-            <div className="absolute inset-0 bg-gradient-to-br from-sky-200 to-cyan-300 dark:from-sky-600 dark:to-cyan-500 rounded-2xl opacity-90 shadow-lg border border-white/50 flex items-center justify-center">
-              <Bot className="h-12 w-12 text-sky-700 dark:text-white" />
+            <div className="absolute inset-0 bg-brand-logo-red rounded-2xl opacity-95 shadow-lg border border-white/40 flex items-center justify-center">
+              <Bot className="h-12 w-12 text-white" />
             </div>
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center border-2 border-amber-300 dark:border-amber-600">
-              <Coins className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-brand-concrete-light dark:bg-brand-dark-red flex items-center justify-center border-2 border-brand-concrete dark:border-brand-logo-red/40">
+              <Coins className="h-4 w-4 text-brand-logo-red dark:text-brand-concrete-light" />
             </div>
-            <div className="absolute top-0 right-0 w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-              <Coins className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+            <div className="absolute top-0 right-0 w-6 h-6 rounded-full bg-brand-concrete-light dark:bg-brand-dark-red flex items-center justify-center">
+              <Coins className="h-3 w-3 text-brand-logo-red dark:text-brand-concrete-light" />
             </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto space-y-10">
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          <div className="rounded-2xl border border-brand-logo-red/35 bg-brand-concrete-light/90 dark:bg-brand-dark-red/35 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm font-semibold text-brand-dark-red dark:text-brand-concrete-light">
+            <span className="flex items-center gap-2">
+              <Clock className="h-4 w-4 shrink-0" />
+              Featured codes refresh in ~2h · Only for you when you&apos;re signed in
+            </span>
+            <span className="text-xs font-bold text-brand-logo-red">Act fast — slots are limited</span>
+          </div>
+          <div>
+            <h2 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              Spin · Scratch <Sparkles className="h-5 w-5 text-brand-logo-red" />
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Play first, then copy codes to cart — unlock surprise savings.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="relative overflow-hidden rounded-3xl border border-brand-concrete/70 dark:border-white/10 bg-white dark:bg-gray-900/80 p-6 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-6"
+            >
+              <div className="relative z-10 space-y-4 flex-1 text-left">
+                <div>
+                  <h3 className="font-heading text-xl font-bold text-gray-900 dark:text-white">Spin &amp; Win</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">Min. order varies · tap to spin</p>
+                </div>
+                <Button
+                  onClick={playSpin}
+                  disabled={!!gameLoading}
+                  className="rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90 text-white font-bold"
+                >
+                  {gameLoading === "spin" ? "Spinning..." : "Spin now"}
+                  <ChevronRight className="h-4 w-4 ml-1 inline" />
+                </Button>
+              </div>
+              <div className="relative z-10 w-32 h-32 sm:w-36 sm:h-36 flex-shrink-0">
+                <div
+                  className="absolute inset-0 rounded-full border-4 border-brand-logo-red/40 shadow-xl"
+                  style={{
+                    background: `conic-gradient(#521109 0deg 90deg, #D3072A 90deg 180deg, #521109 180deg 270deg, #D3072A 270deg 360deg)`,
+                  }}
+                />
+                <div className="absolute inset-[18%] rounded-full bg-white dark:bg-gray-900 border-2 border-brand-logo-red flex items-center justify-center shadow-inner font-bold text-brand-logo-red text-sm">
+                  SPIN
+                </div>
+              </div>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="relative overflow-hidden rounded-3xl border border-brand-concrete/70 dark:border-white/10 bg-brand-concrete-light/90 dark:bg-brand-dark-red/40 p-6 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-6"
+            >
+              <div className="relative z-10 space-y-4 flex-1 text-left">
+                <div>
+                  <h3 className="font-heading text-xl font-bold text-gray-900 dark:text-white">Lucky Scratch</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">Reveal a hidden coupon</p>
+                </div>
+                <Button
+                  onClick={playScratchGame}
+                  disabled={!!gameLoading}
+                  className="rounded-xl bg-brand-dark-red hover:bg-brand-dark-red/90 text-white font-bold dark:bg-brand-logo-red dark:hover:bg-brand-logo-red/90"
+                >
+                  {gameLoading === "scratch" ? "Revealing..." : "Scratch & reveal"}
+                </Button>
+              </div>
+              <div className="relative z-10 w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0 flex items-center justify-center">
+                <div className="absolute inset-0 bg-brand-logo-red rounded-2xl flex items-center justify-center shadow-lg border border-white/30">
+                  <Bot className="h-14 w-14 text-white" />
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-brand-concrete-light dark:bg-brand-ink flex items-center justify-center border-2 border-brand-concrete dark:border-white/20">
+                  <Coins className="h-5 w-5 text-brand-logo-red dark:text-brand-concrete-light" />
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.section>
+
         {/* Offers for you */}
         {personalized.length > 0 && (
           <motion.section
@@ -188,12 +293,38 @@ export default function DiscountsPage() {
           >
             <h2 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
               <span className="flex items-center gap-1.5">
-                Offers for you <Heart className="h-5 w-5 text-emerald-500 fill-emerald-500" />
+                Offers for you <Heart className="h-5 w-5 text-brand-logo-red fill-brand-logo-red/30" />
               </span>
               <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
                 Personalized deals curated just for {pickedForName}.
               </span>
             </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/60 px-4 py-3">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoApply}
+                  onChange={(e) => setAutoApplyPersist(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-400 text-brand-logo-red focus:ring-brand-logo-red"
+                />
+                Apply best coupon automatically at checkout
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/cart?bestCoupon=1"
+                  onClick={() => {
+                    try {
+                      sessionStorage.setItem("aurashop_try_best_coupon", "1");
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg border-2 border-brand-logo-red/50 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-bold text-brand-dark-red dark:text-brand-concrete-light hover:bg-brand-logo-red/10"
+                >
+                  Best coupon for cart
+                </Link>
+              </div>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {personalized.slice(0, 3).map((c, i) => (
                 <OffersCard
@@ -226,110 +357,13 @@ export default function DiscountsPage() {
             ))}
           </div>
         </section>
-
-        {/* Feeling lucky? Play & Win - two cards only */}
-        <section className="space-y-4">
-          <h2 className="font-heading text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            Feeling lucky? Play & Win <Sparkles className="h-5 w-5 text-amber-400" />
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            Play games, unlock special coupons and maximize your savings! ✨
-          </p>
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Spin & Win - wheel graphic, Copy Code > */}
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="relative overflow-hidden rounded-3xl border border-sky-200/80 dark:border-sky-800/50 bg-gradient-to-br from-sky-50 to-blue-100 dark:from-sky-950/50 dark:to-blue-900/40 p-6 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-6"
-            >
-              <div className="relative z-10 space-y-4 flex-1">
-                <div>
-                  <h3 className="font-heading text-xl font-bold text-gray-900 dark:text-white">
-                    Spin & Win
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                    Min. order ₹10,000
-                  </p>
-                </div>
-                <Button
-                  onClick={playSpin}
-                  disabled={!!gameLoading}
-                  className="rounded-xl bg-white/90 hover:bg-white dark:bg-gray-900/80 dark:hover:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 shadow-sm"
-                >
-                  {gameLoading === "spin" ? "Spinning..." : "Copy Code"}{" "}
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-              {/* Spinning wheel graphic - simplified wheel with segments */}
-              <div className="relative z-10 w-32 h-32 sm:w-36 sm:h-36 flex-shrink-0">
-                <div
-                  className="absolute inset-0 rounded-full border-4 border-amber-400 dark:border-amber-500 shadow-xl"
-                  style={{
-                    background: `conic-gradient(#fde68a 0deg 60deg, #e5e7eb 60deg 120deg, #fde68a 120deg 180deg, #e5e7eb 180deg 240deg, #fde68a 240deg 300deg, #e5e7eb 300deg 360deg)`,
-                  }}
-                />
-                <div className="absolute inset-[18%] rounded-full bg-white dark:bg-gray-900 border-2 border-amber-500 flex items-center justify-center shadow-inner font-bold text-amber-600 dark:text-amber-400 text-sm">
-                  SPIN
-                </div>
-                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-amber-500" />
-                <div className="absolute -bottom-1 right-0 w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-700 flex items-center justify-center">
-                  <Coins className="h-3 w-3 text-amber-700 dark:text-amber-200" />
-                </div>
-                <div className="absolute top-2 -right-1 w-4 h-4 rounded-full bg-amber-200 dark:bg-amber-700 flex items-center justify-center">
-                  <Coins className="h-2.5 w-2.5 text-amber-700 dark:text-amber-200" />
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Lucky Scratch - robot with coins, Scratch & Reveal */}
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="relative overflow-hidden rounded-3xl border border-amber-200/80 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-950/50 dark:to-orange-900/40 p-6 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-6"
-            >
-              <div className="relative z-10 space-y-4 flex-1">
-                <div>
-                  <h3 className="font-heading text-xl font-bold text-gray-900 dark:text-white">
-                    Lucky Scratch
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                    Min. order ₹50,000
-                  </p>
-                </div>
-                <Button
-                  onClick={playScratchGame}
-                  disabled={!!gameLoading}
-                  className="rounded-xl bg-white/90 hover:bg-white dark:bg-gray-900/80 dark:hover:bg-gray-900 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 shadow-sm"
-                >
-                  {gameLoading === "scratch" ? "Revealing..." : "Scratch & Reveal"}
-                </Button>
-              </div>
-              {/* Robot with pile of coins */}
-              <div className="relative z-10 w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0 flex items-center justify-center">
-                <div className="absolute inset-0 bg-gradient-to-br from-sky-200 to-cyan-300 dark:from-sky-600 dark:to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg border border-white/50">
-                  <Bot className="h-14 w-14 text-sky-700 dark:text-white" />
-                </div>
-                <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-amber-200 dark:bg-amber-700 flex items-center justify-center border-2 border-amber-400 dark:border-amber-500">
-                  <Coins className="h-5 w-5 text-amber-800 dark:text-amber-200" />
-                </div>
-                <div className="absolute bottom-0 left-0 w-7 h-7 rounded-full bg-amber-200 dark:bg-amber-700 flex items-center justify-center">
-                  <Coins className="h-3.5 w-3.5 text-amber-800 dark:text-amber-200" />
-                </div>
-                <div className="absolute top-0 right-0 w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-700 flex items-center justify-center">
-                  <Coins className="h-2.5 w-2.5 text-amber-800 dark:text-amber-200" />
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </section>
       </div>
 
       {/* Floating chat bubble - robot + message */}
       <div className="fixed bottom-24 right-4 sm:right-6 z-40 max-w-[280px] animate-in slide-in-from-bottom-4 fade-in duration-500 delay-300">
         <div className="relative bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-200 dark:border-gray-700 p-4 rounded-2xl rounded-br-none shadow-xl flex items-start gap-3">
-          <div className="h-9 w-9 rounded-full bg-sky-100 dark:bg-sky-900/50 flex items-center justify-center shrink-0 border border-sky-200 dark:border-sky-700">
-            <Bot className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+          <div className="h-9 w-9 rounded-full bg-brand-logo-red/15 dark:bg-brand-logo-red/25 flex items-center justify-center shrink-0 border border-brand-logo-red/30">
+            <Bot className="h-5 w-5 text-brand-logo-red dark:text-brand-concrete-light" />
           </div>
           <p className="text-sm text-gray-700 dark:text-gray-300 pt-0.5">
             Let me know if you need any help finding the best deals!
@@ -341,7 +375,7 @@ export default function DiscountsPage() {
       <button
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent("focus-search"))}
-        className="fixed bottom-6 right-4 sm:right-6 z-50 h-14 w-14 rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center border border-white/20"
+        className="fixed bottom-6 right-4 sm:right-6 z-50 h-14 w-14 rounded-full bg-brand-logo-red text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center border border-white/30"
         aria-label="Search"
       >
         <Search className="h-6 w-6" />
@@ -402,11 +436,14 @@ function OffersCard({
   return (
     <Card
       className={cn(
-        "rounded-3xl border bg-gradient-to-br shadow-lg hover:shadow-xl transition-all overflow-hidden",
+        "relative rounded-3xl border bg-gradient-to-br shadow-lg hover:shadow-xl transition-all overflow-hidden",
         bgClass
       )}
     >
       <CardContent className="p-5 relative">
+        <Badge className="absolute top-3 right-3 rounded-full bg-brand-logo-red/90 text-white text-[10px] font-bold border-0">
+          Expires in ~2h
+        </Badge>
         {variant === "orange" && (
           <div className="absolute bottom-2 right-2 flex gap-1 opacity-60">
             <Coins className="h-5 w-5 text-amber-500" />
@@ -467,7 +504,7 @@ function AllCouponsCard({
         : "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400";
 
   return (
-    <Card className="rounded-3xl border border-gray-200/80 dark:border-gray-700/80 bg-white/90 dark:bg-gray-900/70 shadow-md hover:shadow-lg transition-all overflow-hidden">
+    <Card className="relative rounded-3xl border border-gray-200/80 dark:border-gray-700/80 bg-white/90 dark:bg-gray-900/70 shadow-md hover:shadow-lg transition-all overflow-hidden">
       <div className="absolute top-4 left-4 z-10">
         <Badge className={cn("rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border-0", badgeClass)}>
           {badge}

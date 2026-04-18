@@ -114,7 +114,17 @@ def create_order(
         print(f"✓ Added pending AuraPoints for order {order_id}")
     except Exception as e:
         print(f"Failed to add pending points for order {order_id}: {e}")
-    
+
+    try:
+        from app.user_preferences import merge_purchase
+        from app.behavior_signals import record_purchase
+
+        pids = [it.product_id for it in items]
+        merge_purchase(user_id if "@" in str(user_id) else None, user_id, [{"product_id": pid} for pid in pids])
+        record_purchase(user_id if "@" in str(user_id) else None, user_id, pids)
+    except Exception:
+        pass
+
     return order
 
 

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { getProductImageSrc, getProductImagePlaceholder } from "@/lib/unsplash";
 
 const API = "/api";
 
@@ -204,7 +205,7 @@ function CreateReturnPageContent() {
         animate={{ opacity: 1, scale: 1 }}
         className="py-12 text-center"
       >
-        <CheckCircle className="h-16 w-16 mx-auto text-emerald-500 mb-4" />
+        <CheckCircle className="h-16 w-16 mx-auto text-brand-logo-red mb-4" />
         <h2 className="text-2xl font-bold mb-2">Return Request Submitted!</h2>
         <p className="text-muted-foreground">Redirecting to return details...</p>
       </motion.div>
@@ -226,14 +227,14 @@ function CreateReturnPageContent() {
       </div>
 
       {/* AuraPoints Warning */}
-      <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+      <div className="bg-brand-concrete-light dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h3 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
+          <Info className="h-5 w-5 text-brand-logo-red dark:text-brand-concrete-light flex-shrink-0 mt-0.5" />
+          <div className="flex-1 text-left">
+            <h3 className="font-bold text-brand-dark-red dark:text-brand-concrete-light mb-1">
               Important: AuraPoints Deduction
             </h3>
-            <p className="text-sm text-amber-700 dark:text-amber-300">
+            <p className="text-sm text-brand-ink/80 dark:text-brand-concrete/85">
               If your return is approved, any AuraPoints earned from this order will be deducted from your wallet. 
               This is to maintain fairness in our rewards program.
             </p>
@@ -262,6 +263,50 @@ function CreateReturnPageContent() {
                 <span className="font-medium">{order?.items?.length || 0} item(s)</span>
               </div>
             </div>
+            {Array.isArray(order?.items) && order.items.length > 0 && (
+              <ul className="mt-4 space-y-3 border-t pt-4">
+                {order.items.map((item: {
+                  product_id: string;
+                  product_name?: string;
+                  product_category?: string;
+                  quantity?: number;
+                  price?: number;
+                  image_url?: string | null;
+                  thumbnail_url?: string | null;
+                }, idx: number) => {
+                  const title = item.product_name || `Product ${item.product_id}`;
+                  const cat = item.product_category || "General";
+                  const src = getProductImageSrc(
+                    item.image_url ?? undefined,
+                    cat,
+                    item.product_id,
+                    title,
+                    item.thumbnail_url ?? undefined
+                  );
+                  return (
+                    <li key={`${item.product_id}-${idx}`} className="flex gap-3 items-center">
+                      <div className="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-muted border">
+                        <img
+                          src={src}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = getProductImagePlaceholder(title);
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm line-clamp-2">{title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Qty {item.quantity ?? 1}
+                          {item.price != null ? ` · ₹${Number(item.price).toLocaleString("en-IN")}` : ""}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </CardContent>
         </Card>
 

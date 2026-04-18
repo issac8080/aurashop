@@ -1,0 +1,17 @@
+{
+  "users": {
+    "sess_ej8urj2jquvmo4itobe": {
+      "last_cart_activity": "2026-04-18T19:27:32.683128"
+    },
+    "issacsunnywork@gmail.com": {
+      "preferred_brands": [
+        "Huawei"
+      ],
+      "category_affinity": {
+        "Jewellery & Accessories": 1,
+        "Laptops": 1
+      },
+      "budget_max": 999999
+    }
+  }
+}

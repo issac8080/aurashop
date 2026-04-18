@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from app.models import EventPayload, Product, EventType
+from app.dummyjson_catalog import load_dummyjson_products
 
 # Load synthetic products once
 PRODUCTS_PATH = Path(__file__).resolve().parent.parent / "data" / "products.json"
@@ -31,6 +32,17 @@ def load_products() -> List[Product]:
     global _products, _products_by_id
     if _products:
         return _products
+    dj = load_dummyjson_products()
+    if dj:
+        _products = []
+        for row in dj:
+            try:
+                _products.append(Product(**row))
+            except Exception:
+                continue
+        _products_by_id = {p.id: p for p in _products}
+        if _products:
+            return _products
     try:
         if not PRODUCTS_PATH.exists():
             return _products
@@ -63,6 +75,18 @@ def get_categories() -> List[str]:
     return sorted({p.category for p in _products})
 
 
+def _category_matches(p: Product, category: str) -> bool:
+    c = category.strip().lower()
+    slug = (getattr(p, "category_slug", None) or "").lower()
+    if slug and slug == c:
+        return True
+    if p.category.lower() == c:
+        return True
+    if p.category.lower().replace(" ", "-") == c.replace(" ", "-"):
+        return True
+    return False
+
+
 def get_products(
     category: Optional[str] = None,
     min_price: Optional[float] = None,
@@ -74,7 +98,7 @@ def get_products(
     load_products()
     out = list(_products)
     if category:
-        out = [p for p in out if p.category == category]
+        out = [p for p in out if _category_matches(p, category)]
     if min_price is not None:
         out = [p for p in out if p.price >= min_price]
     if max_price is not None:

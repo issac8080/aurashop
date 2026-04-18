@@ -31,6 +31,11 @@ from app.data_store import (
     clear_cart,
     get_session_context,
 )
+from app.proactive_service import get_proactive_hints
+from app.analytics_service import log_event as log_analytics_event
+from app.behavior_signals import record_product_view, record_cart_add
+from app.price_signals import record_current_price
+from app.user_preferences import touch_cart_activity
 from app.ai_service import get_recommendations, chat as ai_chat, chat_stream as ai_chat_stream
 from app.order_service import (
     create_order,
@@ -158,12 +163,39 @@ def product_detail(product_id: str):
 @app.post("/events")
 def track_event(payload: EventPayload):
     add_event(payload)
+    uid = getattr(payload, "user_id", None)
+    # Behavior + price signals for personalization & proactive hints
+    if payload.product_id:
+        try:
+            p = get_product(payload.product_id)
+            if p:
+                record_current_price(payload.product_id, p.price)
+            if payload.event_type.value in ("product_click", "page_view"):
+                record_product_view(uid, payload.session_id, payload.product_id)
+        except Exception:
+            pass
+    if payload.event_type.value == "cart_add" and payload.product_id:
+        try:
+            record_cart_add(uid, payload.session_id, payload.product_id)
+            touch_cart_activity(uid, payload.session_id)
+        except Exception:
+            pass
     # Optional: update cart for cart_add/cart_remove
     if payload.event_type.value == "cart_add" and payload.product_id:
         add_to_cart(payload.session_id, payload.product_id)
     elif payload.event_type.value == "cart_remove" and payload.product_id:
         remove_from_cart(payload.session_id, payload.product_id)
     return {"ok": True}
+
+
+@app.get("/chat/proactive")
+def chat_proactive(
+    session_id: str = Query(...),
+    user_id: str | None = Query(None),
+):
+    """Proactive hints from cart idle, repeat views, weather — not only user messages."""
+    hints = get_proactive_hints(session_id, user_id)
+    return {"hints": hints}
 
 
 @app.get("/recommendations")
@@ -192,10 +224,20 @@ def recommendations(
 
 @app.post("/chat")
 def chat_endpoint(body: ChatRequest):
+    try:
+        log_analytics_event(
+            "chat_message",
+            body.session_id,
+            {"message_len": len(body.message or ""), "has_context": bool(body.context)},
+            user_id=(body.context or {}).get("user_id") if isinstance(body.context, dict) else body.user_id,
+        )
+    except Exception:
+        pass
     result = ai_chat(
         session_id=body.session_id,
         message=body.message,
         history=body.history,
+        context=body.context,
     )
     return result
 
@@ -208,6 +250,15 @@ def _sse_stream(session_id: str, message: str, history: list, context: dict | No
 
 @app.post("/chat/stream")
 def chat_stream_endpoint(body: ChatRequest):
+    try:
+        log_analytics_event(
+            "chat_stream_message",
+            body.session_id,
+            {"message_len": len(body.message or ""), "has_context": bool(body.context)},
+            user_id=(body.context or {}).get("user_id") if isinstance(body.context, dict) else body.user_id,
+        )
+    except Exception:
+        pass
     return StreamingResponse(
         _sse_stream(body.session_id, body.message, body.history or [], body.context),
         media_type="text/event-stream",
@@ -392,6 +443,7 @@ def get_order_detail(order_id: str):
             "quantity": item.quantity,
             "price": item.price,
             "image_url": product.image_url if product else None,
+            "thumbnail_url": product.thumbnail_url if product else None,
         })
     return {**order.model_dump(), "items": items_enriched}
 

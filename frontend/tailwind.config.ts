@@ -28,17 +28,36 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        input: "hsl(var(--input))",
+        border: "hsl(var(--border))",
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        brand: {
+          "dark-red": "#521109",
+          "logo-red": "#D3072A",
+          orange: "#F0500A",
+          ink: "#202020",
+          concrete: "#CFC5B7",
+          "concrete-light": "#F5F3F1",
+        },
         "ai-accent": "hsl(var(--ai-accent))",
       },
+      backgroundImage: {
+        /** G10X primary gradient: Dark Red → Logo Red → Orange (left to right). Use only for heroes, key highlights, thin dividers — not behind dense text or small controls. */
+        "g10x-gradient": "linear-gradient(to right, #521109 0%, #D3072A 50%, #F0500A 100%)",
+      },
       boxShadow: {
-        "glow": "0 0 24px -4px hsl(var(--primary) / 0.3), 0 0 48px -8px hsl(var(--ai-accent) / 0.2)",
-        "glow-lg": "0 0 40px -8px hsl(var(--primary) / 0.35), 0 0 80px -16px hsl(var(--ai-accent) / 0.2)",
-        "card": "0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)",
-        "card-hover": "0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.05), 0 0 0 1px hsl(var(--primary) / 0.08)",
+        glow: "0 0 24px -4px rgb(211 7 42 / 0.25), 0 0 48px -8px rgb(82 17 9 / 0.15)",
+        "glow-lg": "0 0 40px -8px rgb(211 7 42 / 0.3), 0 0 80px -16px rgb(82 17 9 / 0.12)",
+        card: "0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)",
+        "card-hover":
+          "0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.05), 0 0 0 1px rgb(211 7 42 / 0.08)",
       },
       fontFamily: {
-        heading: ["var(--font-heading)", "system-ui", "sans-serif"],
-        sans: ["var(--font-body)", "system-ui", "sans-serif"],
+        heading: ["var(--font-manrope)", "Arial", "sans-serif"],
+        sans: ["var(--font-manrope)", "Arial", "sans-serif"],
         mono: ["ui-monospace", "monospace"],
       },
       fontSize: {

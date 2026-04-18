@@ -25,11 +25,11 @@ export function BackendOfflineBanner() {
   if (!offline) return null;
 
   return (
-    <div className="sticky top-0 z-50 w-full bg-amber-500/90 text-amber-950 px-4 py-2 text-center text-sm font-medium shadow-sm">
+    <div className="sticky top-0 z-50 w-full bg-brand-dark-red text-white px-4 py-2 text-center text-sm font-bold shadow-sm">
       <span className="inline-flex items-center gap-2">
         <AlertCircle className="h-4 w-4 shrink-0" />
         Backend not running — recommendations and cart need the API. Run:{" "}
-        <code className="rounded bg-amber-600/30 px-1.5 py-0.5 font-mono text-xs">
+        <code className="rounded bg-white/15 px-1.5 py-0.5 font-mono text-xs text-white">
           cd backend && uvicorn app.main:app --reload --port 8000
         </code>
       </span>

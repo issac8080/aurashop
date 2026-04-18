@@ -1,3 +1,17 @@
+import {
+  getAllProducts,
+  getCategoryOptions,
+  getProductById,
+  getProductsByCategory,
+  getNonGroceryProducts,
+  filterProductsLocal,
+  toCategorySlug,
+} from "@/services/productService";
+import type { Product } from "@/lib/product-types";
+
+export type { Product };
+export type { CategoryOption } from "@/services/productService";
+
 const API = "/api";
 
 function isNetworkError(e: unknown): boolean {
@@ -5,25 +19,6 @@ function isNetworkError(e: unknown): boolean {
   if (e instanceof TypeError && /fetch|network/i.test(msg)) return true;
   return /ECONNREFUSED|ECONNRESET|Failed to fetch|NetworkError/i.test(msg);
 }
-
-export type Product = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  currency: string;
-  category: string;
-  subcategory?: string;
-  brand?: string;
-  rating: number;
-  review_count: number;
-  colors: string[];
-  sizes: string[];
-  image_url?: string;
-  tags: string[];
-  in_stock: boolean;
-  stock_count?: number;
-};
 
 export type EventType =
   | "page_view"
@@ -54,16 +49,23 @@ export type RecommendationItem = {
   product?: Partial<Product>;
 };
 
-export async function fetchCategories(): Promise<{ categories: string[] }> {
+export async function fetchCategories(): Promise<{ categories: { slug: string; name: string }[] }> {
   try {
-    const res = await fetch(`${API}/categories`);
-    if (!res.ok) return { categories: [] };
-    return res.json();
-  } catch (e) {
-    if (isNetworkError(e)) return { categories: ["Clothing", "Electronics", "Accessories", "Footwear"] };
-    throw e;
+    const list = await getCategoryOptions();
+    return { categories: list };
+  } catch {
+    return {
+      categories: [
+        { slug: "smartphones", name: "Smartphones" },
+        { slug: "laptops", name: "Laptops" },
+        { slug: "fragrances", name: "Fragrances" },
+        { slug: "mens-shirts", name: "Mens Shirts" },
+      ],
+    };
   }
 }
+
+export type StoreMode = "groceries" | "general";
 
 export async function fetchProducts(params?: {
   category?: string;
@@ -72,39 +74,53 @@ export async function fetchProducts(params?: {
   min_rating?: number;
   color?: string;
   limit?: number;
-}): Promise<{ products: Product[] }> {
+  /** Groceries-only vs everything except groceries (Instamart-style separation). Omit = full catalog. */
+  store?: StoreMode;
+}): Promise<{ products: Product[]; usedFallback: boolean }> {
   try {
-    const search = new URLSearchParams();
-    if (params?.category) search.set("category", params.category);
-    if (params?.min_price != null) search.set("min_price", String(params.min_price));
-    if (params?.max_price != null) search.set("max_price", String(params.max_price));
-    if (params?.min_rating != null) search.set("min_rating", String(params.min_rating));
-    if (params?.color) search.set("color", params.color);
-    if (params?.limit) search.set("limit", String(params.limit));
-    const res = await fetch(`${API}/products?${search}`);
-    if (!res.ok) throw new Error("Failed to fetch products");
-    return res.json();
-  } catch (e) {
-    if (isNetworkError(e) || (e instanceof Error && e.message === "Failed to fetch products")) {
-      const { getFallbackProducts } = await import("./fallback-products");
-      return { products: getFallbackProducts(params) };
+    const slug = params?.category ? toCategorySlug(params.category) : undefined;
+    const store = params?.store;
+
+    let list: Product[];
+    if (store === "groceries") {
+      list = await getProductsByCategory("groceries");
+    } else if (store === "general") {
+      list = await getNonGroceryProducts();
+    } else if (slug) {
+      list = await getProductsByCategory(slug);
+    } else {
+      list = await getAllProducts();
     }
-    throw e;
+
+    return { products: filterProductsLocal(list, { ...params, category: slug }), usedFallback: false };
+  } catch {
+    const { getFallbackProducts } = await import("./fallback-products");
+    const raw = getFallbackProducts(params);
+    let list = raw;
+    if (params?.store === "groceries") {
+      list = raw.filter(
+        (p) =>
+          (p.category_slug || "").toLowerCase() === "groceries" ||
+          /grocery|food|fresh/i.test(p.category + (p.name || ""))
+      );
+      if (list.length === 0) list = raw.slice(0, 5);
+    } else if (params?.store === "general") {
+      list = raw.filter((p) => (p.category_slug || "").toLowerCase() !== "groceries");
+    }
+    return { products: filterProductsLocal(list, { ...params, category: params?.category ? toCategorySlug(params.category) : undefined }), usedFallback: true };
   }
 }
 
 export async function fetchProduct(id: string): Promise<Product> {
   try {
-    const res = await fetch(`${API}/products/${id}`);
-    if (!res.ok) throw new Error("Product not found");
-    return res.json();
+    const p = await getProductById(id);
+    if (p) return p;
+    throw new Error("Product not found");
   } catch (e) {
-    if (isNetworkError(e)) {
-      const { getFallbackProduct } = await import("./fallback-products");
-      const p = getFallbackProduct(id);
-      if (p) return p;
-    }
-    throw e;
+    const { getFallbackProduct } = await import("./fallback-products");
+    const p = getFallbackProduct(id);
+    if (p) return p;
+    throw e instanceof Error ? e : new Error("Product not found");
   }
 }
 
@@ -185,6 +201,8 @@ export type ChatContext = {
   cart_count?: number;
   cart_total?: number;
   recent_product_ids?: string[];
+  /** When `groceries`, Aura AI and catalog tools should only use grocery / food / essentials. */
+  store_mode?: "general" | "groceries";
 };
 
 export type ChatStreamCallbacks = {
@@ -194,6 +212,29 @@ export type ChatStreamCallbacks = {
 };
 
 /** Stream chat response (SSE). Context-aware Aura AI. Calls onChunk for each token, onDone with product_ids and actions. */
+export type ProactiveHint = {
+  id: string;
+  text: string;
+  product_ids?: string[];
+  actions?: ChatAction[];
+};
+
+/** Proactive nudges from backend (repeat views, cart idle, weather) — not only chat replies. */
+export async function fetchChatProactive(
+  sessionId: string,
+  userId?: string | null
+): Promise<{ hints: ProactiveHint[] }> {
+  try {
+    const q = new URLSearchParams({ session_id: sessionId });
+    if (userId) q.set("user_id", userId);
+    const res = await fetch(`${API}/chat/proactive?${q}`);
+    if (!res.ok) return { hints: [] };
+    return res.json();
+  } catch {
+    return { hints: [] };
+  }
+}
+
 export async function chatStream(
   sessionId: string,
   message: string,

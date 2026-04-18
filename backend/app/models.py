@@ -34,6 +34,7 @@ class Product(BaseModel):
     price: float
     currency: str = "INR"
     category: str
+    category_slug: Optional[str] = None
     subcategory: Optional[str] = None
     brand: Optional[str] = None
     rating: float
@@ -41,9 +42,12 @@ class Product(BaseModel):
     colors: List[str] = []
     sizes: List[str] = []
     image_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     tags: List[str] = []
     in_stock: bool = True
     stock_count: Optional[int] = None
+    compare_at_price: Optional[float] = None
+    discount_percent: Optional[int] = None
 
 
 class RecommendationItem(BaseModel):
@@ -65,6 +69,7 @@ class ChatContext(BaseModel):
     cart_count: Optional[int] = None
     cart_total: Optional[float] = None
     recent_product_ids: Optional[List[str]] = None
+    store_mode: Optional[str] = None  # "general" | "groceries" — scope catalog in chat
 
 
 class ChatRequest(BaseModel):

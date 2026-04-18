@@ -76,17 +76,17 @@ function LoginPageContent() {
         transition={{ duration: 0.4 }}
         className="w-full max-w-md"
       >
-        <div className="rounded-3xl border-2 border-teal-100 dark:border-teal-900/40 bg-gradient-to-b from-white to-teal-50/30 dark:from-gray-900/90 dark:to-teal-950/20 shadow-2xl shadow-teal-500/10 overflow-hidden">
-          <div className="h-1.5 bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500" />
+        <div className="rounded-3xl border-2 border-brand-concrete/80 dark:border-white/10 bg-brand-concrete-light dark:bg-brand-ink shadow-2xl shadow-black/10 overflow-hidden">
+          <div className="h-1.5 bg-g10x-gradient" />
           <div className="p-8 sm:p-10 space-y-8">
             <div className="text-center space-y-2">
-              <Link href="/" className="inline-flex items-center gap-2 font-heading font-bold text-xl text-gray-900 dark:text-white hover:opacity-90">
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-emerald-500 to-cyan-600 text-white shadow-lg shadow-teal-500/30">
+              <Link href="/" className="inline-flex items-center gap-2 font-heading font-bold text-xl text-brand-dark-red dark:text-brand-concrete-light hover:opacity-90">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-logo-red text-white shadow-lg shadow-brand-logo-red/25">
                   <Sparkles className="h-5 w-5" />
                 </span>
                 AuraShop
               </Link>
-              <h1 className="font-heading text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white pt-2">
+              <h1 className="font-heading text-2xl sm:text-3xl font-bold text-brand-dark-red dark:text-brand-concrete-light pt-2">
                 {step === "email" ? "Login or Sign up" : "Enter OTP"}
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -120,7 +120,7 @@ function LoginPageContent() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-xl h-12 font-semibold bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-600 hover:from-teal-600 hover:via-emerald-600 hover:to-cyan-700 text-white shadow-lg shadow-teal-500/30"
+                  className="w-full rounded-xl h-12 font-bold bg-brand-logo-red hover:bg-brand-logo-red/90 text-white shadow-lg shadow-brand-logo-red/25"
                 >
                   {loading ? "Sending..." : "Send OTP"}
                 </Button>
@@ -154,7 +154,7 @@ function LoginPageContent() {
                 <Button
                   type="submit"
                   disabled={loading || otp.length < 6}
-                  className="w-full rounded-xl h-12 font-semibold bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-600 hover:from-teal-600 hover:via-emerald-600 hover:to-cyan-700 text-white shadow-lg shadow-teal-500/30"
+                  className="w-full rounded-xl h-12 font-bold bg-brand-logo-red hover:bg-brand-logo-red/90 text-white shadow-lg shadow-brand-logo-red/25"
                 >
                   <LogIn className="h-5 w-5 mr-2" />
                   {loading ? "Verifying..." : "Verify & Login"}

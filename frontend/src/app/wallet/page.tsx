@@ -231,11 +231,11 @@ export default function WalletPage() {
     <div className="min-h-screen pb-28 sm:pb-24">
       {/* Hero: light background, sparkling/cloud feel, floating coins, robot on cloud */}
       <div className="relative overflow-hidden pt-6 sm:pt-8 pb-8">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(34,211,238,0.08),transparent)]" />
-        <div className="absolute top-20 left-1/4 w-3 h-3 rounded-full bg-amber-400/60 animate-pulse" />
-        <div className="absolute top-32 right-1/3 w-2 h-2 rounded-full bg-amber-300/70 animate-pulse" />
-        <div className="absolute bottom-8 right-1/4 w-4 h-4 rounded-full bg-amber-400/50 animate-pulse" />
-        <div className="absolute top-16 right-20 w-2 h-2 rounded-full bg-amber-300/60" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(211,7,42,0.06),transparent)]" />
+        <div className="absolute top-20 left-1/4 w-3 h-3 rounded-full bg-brand-orange/40 animate-pulse" />
+        <div className="absolute top-32 right-1/3 w-2 h-2 rounded-full bg-brand-concrete/70 animate-pulse" />
+        <div className="absolute bottom-8 right-1/4 w-4 h-4 rounded-full bg-brand-orange/35 animate-pulse" />
+        <div className="absolute top-16 right-20 w-2 h-2 rounded-full bg-brand-concrete/60" />
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="space-y-2">
             <h1 className="font-heading text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
@@ -246,14 +246,14 @@ export default function WalletPage() {
             </p>
           </div>
           <div className="hidden md:flex relative w-24 h-24 shrink-0 items-center justify-center">
-            <div className="absolute inset-0 bg-gradient-to-br from-sky-200 to-cyan-300 dark:from-sky-600 dark:to-cyan-500 rounded-2xl opacity-95 shadow-lg border border-white/50 flex items-center justify-center">
-              <Bot className="h-10 w-10 text-sky-700 dark:text-white" />
+            <div className="absolute inset-0 bg-brand-logo-red rounded-2xl opacity-95 shadow-lg border border-white/50 flex items-center justify-center">
+              <Bot className="h-10 w-10 text-white" />
             </div>
-            <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center border-2 border-amber-300 dark:border-amber-600">
-              <Coins className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+            <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-brand-concrete-light dark:bg-brand-dark-red/40 flex items-center justify-center border-2 border-brand-concrete dark:border-brand-logo-red/40">
+              <Coins className="h-3.5 w-3.5 text-brand-logo-red dark:text-brand-concrete-light" />
             </div>
-            <div className="absolute top-0 right-0 w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-              <Coins className="h-2.5 w-2.5 text-amber-600 dark:text-amber-400" />
+            <div className="absolute top-0 right-0 w-5 h-5 rounded-full bg-brand-concrete-light dark:bg-brand-dark-red/40 flex items-center justify-center">
+              <Coins className="h-2.5 w-2.5 text-brand-logo-red dark:text-brand-concrete-light" />
             </div>
           </div>
         </div>
@@ -284,28 +284,28 @@ export default function WalletPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Available for your next purchase</p>
                 <Button
                   onClick={() => setShowAddMoney(true)}
-                  className="mt-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2.5 gap-2"
+                  className="mt-4 rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90 text-white font-semibold px-5 py-2.5 gap-2"
                 >
                   <Plus className="h-4 w-4" />
                   Add Money
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4">
+                <div className="rounded-xl bg-brand-concrete-light dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30 p-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Total Earned</span>
+                    <TrendingUp className="h-4 w-4 text-brand-logo-red dark:text-brand-concrete-light" />
+                    <span className="text-sm font-medium text-brand-dark-red dark:text-brand-concrete-light">Total Earned</span>
                   </div>
-                  <p className="font-heading text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  <p className="font-heading text-2xl font-bold text-brand-logo-red dark:text-brand-concrete-light">
                     ₹{summary?.total_earned ?? 0}
                   </p>
                 </div>
-                <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4">
+                <div className="rounded-xl bg-brand-concrete-light dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30 p-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <TrendingDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Total Spent</span>
+                    <TrendingDown className="h-4 w-4 text-brand-logo-red dark:text-brand-concrete-light" />
+                    <span className="text-sm font-medium text-brand-dark-red dark:text-brand-concrete-light">Total Spent</span>
                   </div>
-                  <p className="font-heading text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  <p className="font-heading text-2xl font-bold text-brand-logo-red dark:text-brand-concrete-light">
                     ₹{summary?.total_spent ?? 0}
                   </p>
                 </div>
@@ -336,9 +336,11 @@ export default function WalletPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500"
-                      style={{ width: `${(VALIDITY_CURRENT / VALIDITY_GOAL) * 100}%` }}
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-brand-logo-red to-brand-dark-red"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(VALIDITY_CURRENT / VALIDITY_GOAL) * 100}%` }}
+                      transition={{ duration: 0.9, ease: "easeOut" }}
                     />
                   </div>
                   <Lock className="h-4 w-4 text-gray-400 shrink-0" />
@@ -346,6 +348,23 @@ export default function WalletPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Spend ₹{SPEND_MORE_FOR_VIP.toLocaleString()} more to reach VIP Level {VIP_LEVEL}
                 </p>
+                <p className="text-sm font-bold text-brand-dark-red dark:text-brand-concrete-light">
+                  {(() => {
+                    const bal = summary?.balance ?? 0;
+                    const step = 200;
+                    const next = Math.ceil((bal + 1) / step) * step;
+                    const away = Math.max(0, next - bal);
+                    return away > 0 ? `₹${away} away from your next wallet reward` : "You unlocked the next reward tier";
+                  })()}
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button className="rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90 text-white font-bold" asChild>
+                    <Link href="/cart">Use wallet now</Link>
+                  </Button>
+                  <Button variant="outline" className="rounded-xl font-bold border-brand-logo-red/50" asChild>
+                    <Link href="/checkout">Apply to cart</Link>
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -359,7 +378,7 @@ export default function WalletPage() {
           className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-6"
         >
           <div className="flex items-center gap-2 mb-6">
-            <Trophy className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+            <Trophy className="h-6 w-6 text-brand-logo-red dark:text-brand-concrete-light" />
             <h2 className="font-heading text-xl font-bold text-gray-900 dark:text-white">
               Hold & earn amazing rewards
             </h2>
@@ -388,21 +407,21 @@ export default function WalletPage() {
           {activeTab === "quests" && (
             <div className="grid sm:grid-cols-2 gap-6">
               {/* Daily Check-In */}
-              <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 p-6">
+              <div className="rounded-2xl border border-brand-concrete dark:border-brand-logo-red/30 bg-brand-concrete-light dark:bg-brand-dark-red/40 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-heading text-lg font-bold text-gray-900 dark:text-white">Daily Check-In</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Check in daily</p>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20">
-                    <Smile className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    <span className="font-bold text-amber-700 dark:text-amber-300">20</span>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-logo-red/15">
+                    <Smile className="h-5 w-5 text-brand-logo-red dark:text-brand-concrete-light" />
+                    <span className="font-bold text-brand-dark-red dark:text-brand-concrete-light">20</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-center mb-4">
                   <div className="relative">
-                    <div className="w-28 h-28 rounded-2xl bg-white dark:bg-gray-800 border-2 border-amber-200 dark:border-amber-700 flex flex-col items-center justify-center shadow-md">
-                      <Calendar className="h-6 w-6 text-amber-600 dark:text-amber-400 mb-1" />
+                    <div className="w-28 h-28 rounded-2xl bg-white dark:bg-gray-800 border-2 border-brand-concrete dark:border-brand-logo-red/40 flex flex-col items-center justify-center shadow-md">
+                      <Calendar className="h-6 w-6 text-brand-logo-red dark:text-brand-concrete-light mb-1" />
                       <span className="text-xs text-gray-500 dark:text-gray-400">
                         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date().getDay()]}
                       </span>
@@ -413,7 +432,7 @@ export default function WalletPage() {
                         <div
                           key={i}
                           className={`h-2 w-5 rounded-sm ${
-                            i < checkInStreak ? "bg-amber-400 dark:bg-amber-500" : "bg-gray-200 dark:bg-gray-700"
+                            i < checkInStreak ? "bg-brand-logo-red dark:bg-brand-orange" : "bg-gray-200 dark:bg-gray-700"
                           }`}
                         />
                       ))}
@@ -427,32 +446,32 @@ export default function WalletPage() {
                 {!checkedIn ? (
                   <Button
                     onClick={handleCheckIn}
-                    className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+                    className="w-full rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90 text-white font-bold"
                   >
                     Check In Today
                   </Button>
                 ) : (
-                  <div className="w-full rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-semibold py-3 text-center">
+                  <div className="w-full rounded-xl bg-brand-logo-red/12 border border-brand-logo-red/30 text-brand-dark-red dark:text-brand-concrete-light font-bold py-3 text-center">
                     ✓ Checked in today!
                   </div>
                 )}
               </div>
 
               {/* Weekly Challenges */}
-              <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 p-6">
+              <div className="rounded-2xl border border-brand-concrete dark:border-brand-logo-red/30 bg-brand-concrete-light dark:bg-brand-dark-red/40 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-heading text-lg font-bold text-gray-900 dark:text-white">Weekly Challenges</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Complete weekly assignments</p>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20">
-                    <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    <span className="font-bold text-amber-700 dark:text-amber-300">Up to +300</span>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-logo-red/15">
+                    <Coins className="h-5 w-5 text-brand-logo-red dark:text-brand-concrete-light" />
+                    <span className="font-bold text-brand-dark-red dark:text-brand-concrete-light">Up to +300</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-center mb-4">
-                  <div className="w-28 h-28 rounded-2xl bg-amber-200/50 dark:bg-amber-900/30 border-2 border-amber-300 dark:border-amber-700 flex items-center justify-center">
-                    <Coins className="h-12 w-12 text-amber-600 dark:text-amber-400" />
+                  <div className="w-28 h-28 rounded-2xl bg-brand-concrete/50 dark:bg-brand-dark-red/40 border-2 border-brand-concrete dark:border-brand-logo-red/40 flex items-center justify-center">
+                    <Coins className="h-12 w-12 text-brand-logo-red dark:text-brand-concrete-light" />
                   </div>
                 </div>
                 <div className="flex gap-1 mb-4">
@@ -460,7 +479,7 @@ export default function WalletPage() {
                     <div
                       key={i}
                       className={`flex-1 h-2 rounded-sm ${
-                        i < 5 ? "bg-emerald-400 dark:bg-emerald-500" : "bg-gray-200 dark:bg-gray-700"
+                        i < 5 ? "bg-brand-logo-red dark:bg-brand-orange" : "bg-gray-200 dark:bg-gray-700"
                       }`}
                     />
                   ))}
@@ -476,7 +495,7 @@ export default function WalletPage() {
                     <Link href="/discounts" className="flex items-center gap-1">
                       View Quests
                       <ChevronRight className="h-3 w-3" />
-                      <span className="ml-0.5 px-1.5 py-0.5 rounded bg-amber-500/30 text-xs font-bold">3</span>
+                      <span className="ml-0.5 px-1.5 py-0.5 rounded bg-brand-logo-red/20 text-xs font-bold text-brand-dark-red dark:text-brand-concrete-light">3</span>
                     </Link>
                   </Button>
                 </div>
@@ -496,7 +515,7 @@ export default function WalletPage() {
 
           {activeTab === "lucky_scratch" && (
             <div className="text-center py-8">
-              <Sparkles className="h-12 w-12 mx-auto text-amber-500 mb-3" />
+              <Sparkles className="h-12 w-12 mx-auto text-brand-logo-red mb-3" />
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Scratch to reveal your reward!</p>
               <Button onClick={playScratchGame} disabled={!!gameLoading} className="rounded-xl bg-primary text-white">
                 {gameLoading === "scratch" ? "Scratching..." : "Play Lucky Scratch"}
@@ -521,9 +540,9 @@ export default function WalletPage() {
 
           {transactions.length === 0 ? (
             <div className="space-y-6">
-              <div className="rounded-2xl bg-gradient-to-br from-sky-50 to-cyan-50 dark:from-sky-950/40 dark:to-cyan-950/30 border border-sky-200 dark:border-sky-800 p-6 flex items-center gap-4">
+              <div className="rounded-2xl bg-brand-concrete-light dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30 p-6 flex items-center gap-4">
                 <div className="flex h-14 w-14 rounded-2xl bg-white/80 dark:bg-gray-800/80 items-center justify-center shrink-0">
-                  <Bot className="h-8 w-8 text-sky-600 dark:text-sky-400" />
+                  <Bot className="h-8 w-8 text-brand-logo-red dark:text-brand-concrete-light" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 dark:text-white">
@@ -535,7 +554,7 @@ export default function WalletPage() {
 
               <div className="text-center">
                 <Link href="/products">
-                  <Button className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3">
+                  <Button className="rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90 text-white font-semibold px-6 py-3">
                     Start Shopping
                   </Button>
                 </Link>
@@ -556,8 +575,8 @@ export default function WalletPage() {
                 >
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     {txn.type === "credit" ? (
-                      <div className="h-10 w-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                        <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                      <div className="h-10 w-10 rounded-xl bg-brand-logo-red/15 flex items-center justify-center shrink-0">
+                        <TrendingUp className="h-5 w-5 text-brand-logo-red dark:text-brand-concrete-light" />
                       </div>
                     ) : (
                       <div className="h-10 w-10 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
@@ -580,7 +599,7 @@ export default function WalletPage() {
                   </div>
                   <p
                     className={`font-bold text-lg shrink-0 ml-2 ${
-                      txn.type === "credit" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                      txn.type === "credit" ? "text-brand-logo-red dark:text-brand-concrete-light" : "text-red-600 dark:text-red-400"
                     }`}
                   >
                     {txn.type === "credit" ? "+" : "-"}₹{txn.amount}
@@ -674,8 +693,8 @@ export default function WalletPage() {
                   </div>
                 )}
 
-                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                <div className="p-4 rounded-xl bg-brand-concrete-light dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30">
+                  <p className="text-sm text-brand-dark-red dark:text-brand-concrete-light">
                     💳 Local demo: any card details accepted. Money is added instantly.
                   </p>
                 </div>
@@ -689,7 +708,7 @@ export default function WalletPage() {
                   >
                     Cancel
                   </Button>
-                  <Button className="flex-1 rounded-xl bg-emerald-500 hover:bg-emerald-600" onClick={handleAddMoney} disabled={adding}>
+                  <Button className="flex-1 rounded-xl bg-brand-logo-red hover:bg-brand-logo-red/90" onClick={handleAddMoney} disabled={adding}>
                     {adding ? "Adding..." : "Add Money"}
                   </Button>
                 </div>

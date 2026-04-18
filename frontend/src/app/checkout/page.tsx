@@ -74,8 +74,10 @@ export default function CheckoutPage() {
       }
     }
     async function loadWallet() {
+      const walletUserId = user?.email ?? sessionId;
+      if (!walletUserId) return;
       try {
-        const res = await fetch(`${API}/users/${sessionId}/wallet`);
+        const res = await fetch(`${API}/users/${encodeURIComponent(walletUserId)}/wallet`);
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           const balance = data?.summary?.balance ?? data?.wallet?.balance ?? 0;
@@ -88,7 +90,7 @@ export default function CheckoutPage() {
       loadStores();
       loadWallet();
     }
-  }, [sessionId]);
+  }, [sessionId, user?.email]);
 
   // Pre-fill coupon from cart (sessionStorage) when coming from cart with applied coupon
   useEffect(() => {
@@ -352,20 +354,20 @@ export default function CheckoutPage() {
               {deliveryMethod === "store_pickup" && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
                   {stores.some((s) => s.out_of_maintenance) && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                      <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-brand-concrete-light dark:bg-brand-dark-red/40 border border-brand-concrete dark:border-brand-logo-red/30">
+                      <AlertTriangle className="h-5 w-5 text-brand-orange shrink-0 mt-0.5" />
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-bold text-brand-dark-red dark:text-brand-concrete-light">
                           One store is currently out of maintenance
                         </p>
-                        <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                        <p className="text-xs text-brand-ink/75 dark:text-brand-concrete/85 mt-0.5">
                           Please book online (home delivery) or choose another store below.
                         </p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="mt-2 gap-2 border-amber-300 text-amber-800 dark:text-amber-200"
+                          className="mt-2 gap-2 border-brand-logo-red/40 text-brand-dark-red dark:text-brand-concrete-light"
                           onClick={() => setDeliveryMethod("home_delivery")}
                         >
                           <Package className="h-4 w-4" />
@@ -383,7 +385,7 @@ export default function CheckoutPage() {
                         onClick={() => !isMaintenance && setSelectedStore(store.id)}
                         className={`rounded-lg border p-3 transition-colors ${
                           isMaintenance
-                            ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 cursor-not-allowed opacity-80"
+                            ? "border-brand-concrete dark:border-brand-logo-red/30 bg-brand-concrete/40 dark:bg-brand-dark-red/30 cursor-not-allowed opacity-80"
                             : selectedStore === store.id
                               ? "border-primary bg-primary/5 cursor-pointer"
                               : "border-border hover:border-primary/50 cursor-pointer"
@@ -394,7 +396,7 @@ export default function CheckoutPage() {
                             <p className="font-medium flex items-center gap-2">
                               {store.name}
                               {isMaintenance && (
-                                <span className="inline-flex items-center gap-1 text-xs font-normal text-amber-700 dark:text-amber-300 bg-amber-200/50 dark:bg-amber-800/50 px-2 py-0.5 rounded">
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-brand-dark-red dark:text-brand-concrete-light bg-brand-concrete/50 dark:bg-brand-logo-red/20 px-2 py-0.5 rounded">
                                   <AlertTriangle className="h-3.5 w-3.5" />
                                   Out of maintenance
                                 </span>
@@ -402,7 +404,7 @@ export default function CheckoutPage() {
                             </p>
                             <p className="text-sm text-muted-foreground">{store.address}</p>
                             {isMaintenance && (
-                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                              <p className="text-xs text-brand-ink/70 dark:text-brand-concrete/80 mt-1">
                                 Book online or choose another store
                               </p>
                             )}
@@ -445,11 +447,11 @@ export default function CheckoutPage() {
                   Use a code from <Link href="/discounts" className="text-primary underline hover:no-underline">Discounts</Link>. First-time use only per account.
                 </p>
                 {appliedCoupon ? (
-                  <div className="flex items-center justify-between rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <div className="flex items-center justify-between rounded-lg bg-brand-concrete/40 border border-brand-logo-red/25 px-3 py-2">
+                    <span className="text-sm font-medium text-brand-dark-red dark:text-brand-concrete-light">
                       {appliedCoupon.code} — {appliedCoupon.title}
                     </span>
-                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span className="text-sm font-semibold text-brand-dark-red dark:text-brand-concrete-light">
                       -{formatPrice(appliedCoupon.discount)}
                     </span>
                     <Button
@@ -539,13 +541,13 @@ export default function CheckoutPage() {
                 </div>
               )}
               {appliedCoupon && (
-                <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
+                <div className="flex justify-between text-sm text-brand-logo-red dark:text-brand-concrete-light">
                   <span>Coupon ({appliedCoupon.code})</span>
                   <span>-{formatPrice(appliedCoupon.discount)}</span>
                 </div>
               )}
               {useAuraPoints > 0 && (
-                <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
+                <div className="flex justify-between text-sm text-brand-logo-red dark:text-brand-concrete-light">
                   <span>AuraPoints applied</span>
                   <span>-{formatPrice(useAuraPoints)}</span>
                 </div>
@@ -559,13 +561,13 @@ export default function CheckoutPage() {
               </div>
               
               {cashbackPreview && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                  <Sparkles className="h-4 w-4 text-emerald-600 mt-0.5" />
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-brand-concrete/40 border border-brand-logo-red/25">
+                  <Sparkles className="h-4 w-4 text-brand-logo-red mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <p className="text-sm font-medium text-brand-dark-red dark:text-brand-concrete-light">
                       Earn {formatPrice(cashbackPreview.amount)} AuraPoints
                     </p>
-                    <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
+                    <p className="text-xs text-brand-ink/70 dark:text-brand-concrete/80">
                       {cashbackPreview.rate} rewards • Valid for 30 days
                     </p>
                   </div>

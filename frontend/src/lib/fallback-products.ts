@@ -1,4 +1,4 @@
-import type { Product } from "./api";
+import type { Product } from "./product-types";
 
 /** Static product list used when backend is unreachable (e.g. ECONNREFUSED). */
 export const FALLBACK_PRODUCTS: Product[] = [

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProductCard } from "@/components/ProductCard";
 import { useCart, useAuth } from "@/app/providers";
+import { useCartToast } from "@/components/CartToastProvider";
 import { fetchProduct, fetchRecommendations, trackEvent } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import { getProductImageSrc, getProductImagePlaceholder } from "@/lib/unsplash";
@@ -19,6 +20,7 @@ export default function ProductDetailPage() {
   const id = params?.id as string;
   const { sessionId, refreshCart } = useCart();
   const { user } = useAuth();
+  const { showAddedToCart, showAddToCartError } = useCartToast();
   const [product, setProduct] = useState<Product | null>(null);
   const [similar, setSimilar] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,17 +61,27 @@ export default function ProductDetailPage() {
         setLoading(false);
       }
     }
-    if (sessionId && id) load();
+    if (id) load();
   }, [id, sessionId, user?.email]);
 
   const router = useRouter();
-  const handleAddToCart = (productId: string) => {
+  const handleAddToCart = async (productId: string) => {
     if (!user) {
       router.push("/login?from=" + encodeURIComponent("/products/" + (id || productId)));
       return;
     }
-    trackEvent({ event_type: "cart_add", session_id: sessionId, product_id: productId });
-    refreshCart();
+    try {
+      await trackEvent({ event_type: "cart_add", session_id: sessionId, product_id: productId });
+      await refreshCart();
+      const label =
+        product?.id === productId
+          ? product.name
+          : similar.find((p) => p.id === productId)?.name ?? product?.name;
+      showAddedToCart(label);
+    } catch (error) {
+      console.error("Failed to add to cart:", error);
+      showAddToCartError();
+    }
   };
 
   const handleProductClick = (productId: string) => {
@@ -130,21 +142,31 @@ export default function ProductDetailPage() {
           <div className="grid md:grid-cols-2 gap-0">
             <div className="relative aspect-square md:aspect-auto bg-gray-100 dark:bg-gray-800/50">
               <img
-                src={getProductImageSrc(product.image_url, product.category, product.id, product.name)}
+                src={getProductImageSrc(
+                  product.image_url,
+                  product.category,
+                  product.id,
+                  product.name,
+                  product.thumbnail_url
+                )}
                 alt={product.name}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  e.currentTarget.src = getProductImagePlaceholder(product.name);
+                  if (product.thumbnail_url && e.currentTarget.src !== product.thumbnail_url) {
+                    e.currentTarget.src = product.thumbnail_url;
+                  } else {
+                    e.currentTarget.src = getProductImagePlaceholder(product.name);
+                  }
                 }}
               />
               <div className="absolute top-4 left-4 flex gap-2">
                 {product.stock_count != null && product.stock_count <= 10 && (
-                  <span className="px-3 py-1 rounded-full bg-amber-500/90 text-white text-xs font-bold shadow-sm backdrop-blur-md">
+                  <span className="px-3 py-1 rounded-full bg-brand-orange text-white text-xs font-bold shadow-sm backdrop-blur-md">
                     Only {product.stock_count} left
                   </span>
                 )}
                 {product.rating >= 4.5 && (
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/90 text-white text-xs font-bold shadow-sm backdrop-blur-md flex items-center gap-1">
+                  <span className="px-3 py-1 rounded-full bg-brand-dark-red text-white text-xs font-bold shadow-sm backdrop-blur-md flex items-center gap-1">
                     <Star className="h-3 w-3 fill-current" /> Top Rated
                   </span>
                 )}
@@ -175,9 +197,9 @@ export default function ProductDetailPage() {
                 </div>
                 
                 <div className="flex items-center gap-4 mt-3">
-                  <div className="flex items-center gap-1 bg-amber-100 dark:bg-amber-900/30 px-2 py-1 rounded-lg">
-                    <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
-                    <span className="font-bold text-amber-700 dark:text-amber-400 text-sm">{product.rating}</span>
+                  <div className="flex items-center gap-1 bg-brand-concrete/40 dark:bg-white/10 px-2 py-1 rounded-lg">
+                    <Star className="h-4 w-4 fill-brand-logo-red text-brand-logo-red" />
+                    <span className="font-bold text-brand-dark-red dark:text-brand-concrete-light text-sm">{product.rating}</span>
                   </div>
                   <span className="text-sm text-muted-foreground underline decoration-dotted">
                     {product.review_count} reviews
@@ -186,14 +208,20 @@ export default function ProductDetailPage() {
               </div>
 
               <div className="mb-8">
-                <p className="font-heading text-4xl font-bold text-gray-900 dark:text-white flex items-baseline gap-2">
+                <p className="font-heading text-4xl font-bold text-gray-900 dark:text-white flex flex-wrap items-baseline gap-2">
                   {formatPrice(product.price)}
-                  <span className="text-lg font-normal text-muted-foreground line-through decoration-2 decoration-red-400/50">
-                    {formatPrice(product.price * 1.2)}
-                  </span>
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-md align-top -mt-1">
-                    20% OFF
-                  </span>
+                  {product.compare_at_price != null && product.compare_at_price > product.price ? (
+                    <>
+                      <span className="text-lg font-normal text-muted-foreground line-through decoration-2 decoration-red-400/50">
+                        {formatPrice(product.compare_at_price)}
+                      </span>
+                      {product.discount_percent != null ? (
+                        <span className="text-sm font-bold text-brand-dark-red bg-brand-concrete-light dark:bg-brand-dark-red/50 dark:text-brand-concrete-light px-2 py-0.5 rounded-md align-top -mt-1 border border-brand-logo-red/25">
+                          {product.discount_percent}% OFF
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
                 </p>
                 <p className="text-muted-foreground mt-4 leading-relaxed">
                   {product.description}
@@ -258,18 +286,18 @@ export default function ProductDetailPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="rounded-3xl border border-white/60 dark:border-white/10 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-950/20 dark:to-purple-950/20 backdrop-blur-xl p-6 sm:p-8"
+            className="rounded-3xl border border-brand-concrete/50 dark:border-white/10 bg-brand-concrete-light/90 dark:bg-brand-ink/80 backdrop-blur-xl p-6 sm:p-8"
           >
             <div className="flex items-start gap-4">
               <div className="h-12 w-12 rounded-2xl bg-white dark:bg-white/10 flex items-center justify-center shadow-sm shrink-0">
-                <Sparkles className="h-6 w-6 text-indigo-500" />
+                <Sparkles className="h-6 w-6 text-brand-logo-red" />
               </div>
               <div>
-                <h2 className="font-heading text-xl font-bold text-gray-900 dark:text-white mb-2">Why this is perfect for you</h2>
+                <h2 className="font-heading text-xl font-bold text-brand-dark-red dark:text-brand-concrete-light mb-2 text-left">Why this is perfect for you</h2>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {whyRight.map((line, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 bg-white/60 dark:bg-gray-800/40 rounded-lg px-3 py-2">
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
+                    <div key={i} className="flex items-center gap-2 text-sm text-brand-ink dark:text-brand-concrete-light bg-white/80 dark:bg-brand-dark-red/30 rounded-lg px-3 py-2 text-left">
+                      <div className="h-1.5 w-1.5 rounded-full bg-brand-logo-red shrink-0" />
                       {line}
                     </div>
                   ))}

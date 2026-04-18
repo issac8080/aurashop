@@ -17,13 +17,32 @@ export function getProductImage(category: string, id: string): string {
   return `${PICSUM_BASE}/seed/${seed}/400/400`;
 }
 
-/** Best URL for a product: use API image_url if valid, else generated Picsum URL. */
+function isDeprecatedPlaceholder(url: string): boolean {
+  return url.includes("source.unsplash.com");
+}
+
+/** Best URL for a product: real CDN first; skip deprecated Unsplash Source in favor of DummyJSON thumbnail. */
 export function getProductImageSrc(
   imageUrl: string | undefined,
   category: string,
   id: string,
-  name?: string
+  name?: string,
+  /** DummyJSON thumbnail when primary URL is missing or unreliable */
+  fallbackThumbnail?: string | undefined
 ): string {
+  if (
+    fallbackThumbnail &&
+    (fallbackThumbnail.startsWith("http://") || fallbackThumbnail.startsWith("https://")) &&
+    (isDeprecatedPlaceholder(imageUrl || "") || !imageUrl)
+  ) {
+    return fallbackThumbnail;
+  }
+  if (imageUrl && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) && !isDeprecatedPlaceholder(imageUrl)) {
+    return imageUrl;
+  }
+  if (fallbackThumbnail && (fallbackThumbnail.startsWith("http://") || fallbackThumbnail.startsWith("https://"))) {
+    return fallbackThumbnail;
+  }
   if (imageUrl && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
     return imageUrl;
   }
