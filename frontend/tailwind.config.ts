@@ -45,8 +45,8 @@ const config: Config = {
         "ai-accent": "hsl(var(--ai-accent))",
       },
       backgroundImage: {
-        /** G10X primary gradient: Dark Red → Logo Red → Orange (left to right). Use only for heroes, key highlights, thin dividers — not behind dense text or small controls. */
-        "g10x-gradient": "linear-gradient(to right, #521109 0%, #D3072A 50%, #F0500A 100%)",
+        /** Aura brand primary gradient: Dark Red → Logo Red → Orange (left to right). Use only for heroes, key highlights, thin dividers — not behind dense text or small controls. */
+        "aura-gradient": "linear-gradient(to right, #521109 0%, #D3072A 50%, #F0500A 100%)",
       },
       boxShadow: {
         glow: "0 0 24px -4px rgb(211 7 42 / 0.25), 0 0 48px -8px rgb(82 17 9 / 0.15)",

@@ -415,14 +415,14 @@ export function ChatWidget() {
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
             className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] sm:right-[calc(1.5rem+env(safe-area-inset-right,0px))] z-50 w-[min(440px,calc(100vw-2rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))] sm:w-[440px] max-w-[calc(100vw-2rem-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px))] h-[min(92vh,720px)] sm:h-[min(90vh,680px)] max-h-[min(90vh,calc(100dvh-8rem-env(safe-area-inset-bottom,0px)))] rounded-2xl border-0 bg-white dark:bg-brand-ink shadow-card-hover flex flex-col overflow-hidden ring-1 ring-black/[0.06] dark:ring-white/10"
           >
-            {/* G10X header — fixed height */}
+            {/* Aura chat header — fixed height */}
             <div className="relative flex items-center justify-between px-4 py-3 bg-brand-ink text-white shrink-0 min-h-[56px]">
               <div
-                className="absolute inset-x-0 bottom-0 h-0.5 bg-g10x-gradient opacity-90"
+                className="absolute inset-x-0 bottom-0 h-0.5 bg-aura-gradient opacity-90"
                 aria-hidden
               />
               <div className="flex items-center gap-3 min-w-0">
-                <div className="relative h-11 w-11 rounded-2xl bg-g10x-gradient flex items-center justify-center shadow-glow shrink-0">
+                <div className="relative h-11 w-11 rounded-2xl bg-aura-gradient flex items-center justify-center shadow-glow shrink-0">
                   <Sparkles className="h-5 w-5 text-white" />
                   <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brand-orange border-2 border-brand-ink" />
                 </div>
@@ -653,7 +653,7 @@ export function ChatWidget() {
                                       }}
                                     />
                                     {idx === 0 && (
-                                      <span className="absolute top-2 left-2 rounded-md bg-g10x-gradient px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                                      <span className="absolute top-2 left-2 rounded-md bg-aura-gradient px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm">
                                         Best pick
                                       </span>
                                     )}

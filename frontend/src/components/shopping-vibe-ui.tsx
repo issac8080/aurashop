@@ -50,7 +50,7 @@ export function ShoppingVibeSplitControl({
           isChat
             ? "border-white/20 bg-white/10"
             : isOn
-              ? "border-transparent bg-g10x-gradient text-white"
+              ? "border-transparent bg-aura-gradient text-white"
               : "border-brand-concrete/55 bg-white/95 dark:border-white/15 dark:bg-brand-ink/95"
         )}
       >
@@ -162,7 +162,7 @@ export function ShoppingVibeToggleButton({
         className={cn(
           "rounded-full h-9 w-9 shrink-0 border transition-colors",
           isOn
-            ? "border-transparent bg-g10x-gradient text-white shadow-md hover:opacity-95"
+            ? "border-transparent bg-aura-gradient text-white shadow-md hover:opacity-95"
             : "border-white/15 text-white/75 hover:text-white hover:bg-white/10 bg-white/5",
           className
         )}
@@ -183,7 +183,7 @@ export function ShoppingVibeToggleButton({
       className={cn(
         "h-11 shrink-0 rounded-xl border px-2.5 sm:px-3 transition-colors gap-2",
         isOn
-          ? "border-transparent bg-g10x-gradient text-white shadow-sm hover:opacity-95"
+          ? "border-transparent bg-aura-gradient text-white shadow-sm hover:opacity-95"
           : "border-brand-concrete/55 bg-white/95 text-brand-ink hover:border-brand-logo-red/40 hover:bg-brand-logo-red/10 dark:border-white/15 dark:bg-brand-ink/95 dark:text-brand-concrete-light dark:hover:bg-brand-logo-red/15",
         className
       )}
@@ -222,7 +222,7 @@ export function ShoppingVibeMoodStrip({
           className={cn(
             "rounded-lg px-2 sm:px-2.5 py-1 text-[10px] font-bold tracking-wide transition-colors border min-w-0",
             mode === id
-              ? "border-transparent bg-g10x-gradient text-white shadow-sm"
+              ? "border-transparent bg-aura-gradient text-white shadow-sm"
               : variant === "chat"
                 ? "border-brand-concrete/40 bg-brand-concrete/15 text-brand-concrete-light hover:bg-white/10"
                 : "border-brand-concrete/50 bg-white/80 text-brand-ink hover:bg-brand-concrete-light/90 dark:border-white/12 dark:bg-white/10 dark:text-brand-concrete-light dark:hover:bg-white/15"

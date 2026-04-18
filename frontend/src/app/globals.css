@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    /* G10X-aligned surfaces: concrete light bg, ink text, logo red primary */
+    /* Aura brand surfaces: concrete light bg, ink text, logo red primary */
     --background: 30 20% 96%;
     --foreground: 0 0% 12.5%;
     --primary: 349 94% 43%;
@@ -133,7 +133,7 @@ h6 {
   right: auto;
 }
 
-/* ========== GLASS + G10X ========== */
+/* ========== GLASS + AURA BRAND CHROME ========== */
 @layer components {
   .glass {
     @apply bg-white/80 dark:bg-white/5 backdrop-blur-xl border border-brand-concrete/40 dark:border-white/10;
@@ -171,21 +171,21 @@ h6 {
     @apply bg-brand-concrete-light text-brand-ink border border-brand-logo-red/40 shadow-sm dark:bg-brand-ink dark:text-brand-concrete-light dark:border-brand-concrete/40;
   }
   /** One primary brand gradient per screen region: hero / highlight band */
-  .surface-g10x-hero {
+  .surface-aura-hero {
     background-image: linear-gradient(to right, #521109 0%, #d3072a 50%, #f0500a 100%);
   }
   /**
-   * Global app chrome: frosted bar + G10X hairline. Works with .g10x-header--grocery (green).
+   * Global app chrome: frosted bar + brand hairline. Works with .aura-header--grocery (green).
    */
-  .g10x-header-glass {
+  .aura-header-glass {
     @apply bg-white/70 dark:bg-brand-ink/80 backdrop-blur-2xl border-b border-white/30 dark:border-white/10;
     box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.45) inset, 0 4px 24px -4px rgba(82, 17, 9, 0.08);
   }
-  .g10x-header-glass.g10x-header--grocery {
+  .aura-header-glass.aura-header--grocery {
     @apply bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-200/50 dark:border-emerald-500/20;
     box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.4) inset, 0 4px 24px -4px rgba(46, 125, 50, 0.1);
   }
-  .g10x-nav-glass {
+  .aura-nav-glass {
     @apply bg-white/50 dark:bg-white/5 backdrop-blur-xl border border-white/25 dark:border-white/10 rounded-2xl shadow-inner;
   }
 }

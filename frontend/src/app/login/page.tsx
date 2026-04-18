@@ -77,7 +77,7 @@ function LoginPageContent() {
         className="w-full max-w-md"
       >
         <div className="rounded-3xl border-2 border-brand-concrete/80 dark:border-white/10 bg-brand-concrete-light dark:bg-brand-ink shadow-2xl shadow-black/10 overflow-hidden">
-          <div className="h-1.5 bg-g10x-gradient" />
+          <div className="h-1.5 bg-aura-gradient" />
           <div className="p-8 sm:p-10 space-y-8">
             <div className="text-center space-y-2">
               <Link href="/" className="inline-flex items-center gap-2 font-heading font-bold text-xl text-brand-dark-red dark:text-brand-concrete-light hover:opacity-90">

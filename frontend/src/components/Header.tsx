@@ -44,14 +44,14 @@ export function Header() {
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 w-full relative g10x-header-glass",
-        isGroceries && "g10x-header--grocery"
+        "sticky top-0 z-40 w-full relative aura-header-glass",
+        isGroceries && "aura-header--grocery"
       )}
     >
       <div
         className={cn(
           "h-0.5 w-full",
-          isGroceries ? "bg-gradient-to-r from-[#1B5E20] to-[#66BB6A]" : "bg-g10x-gradient"
+          isGroceries ? "bg-gradient-to-r from-[#1B5E20] to-[#66BB6A]" : "bg-aura-gradient"
         )}
       />
 
@@ -205,7 +205,7 @@ export function Header() {
           />
           <div
             className={cn(
-              "g10x-nav-glass flex-1 min-w-0 rounded-2xl focus-within:ring-2 transition-all duration-200 [&_input]:border-0 [&_input]:bg-transparent [&_input]:focus-visible:ring-0 [&_input]:rounded-2xl [&_input]:py-2.5",
+              "aura-nav-glass flex-1 min-w-0 rounded-2xl focus-within:ring-2 transition-all duration-200 [&_input]:border-0 [&_input]:bg-transparent [&_input]:focus-visible:ring-0 [&_input]:rounded-2xl [&_input]:py-2.5",
               isGroceries
                 ? "focus-within:ring-[#2E7D32]/25"
                 : "focus-within:ring-brand-logo-red/15"

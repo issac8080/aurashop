@@ -417,7 +417,7 @@ function ProductsPageContent() {
                   : "relative"
               } rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg overflow-hidden lg:sticky lg:top-24`}
             >
-              <div className="h-1 bg-g10x-gradient" />
+              <div className="h-1 bg-aura-gradient" />
               <div className="p-5 space-y-5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
